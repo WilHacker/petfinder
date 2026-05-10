@@ -80,4 +80,5 @@ dependencies {
     // Librería oficial de íconos de Material Design para Compose
     implementation("androidx.compose.material:material-icons-extended")
     implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("com.google.android.gms:play-services-location:21.2.0")
 }

@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.ShareLocation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -15,12 +16,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.frontend.petfinder.geofencing.presentation.MapHomeScreen
+import com.frontend.petfinder.geofencing.presentation.MapViewModel
 import com.frontend.petfinder.geofencing.presentation.MyZonesScreen
 import com.frontend.petfinder.pets.presentation.MyPetsScreen
 
 @Composable
 fun MainScreen(rootNavController: NavHostController) {
     val bottomNavController = rememberNavController()
+
+    // CEREBRO COMPARTIDO: Ambas pestañas verán exactamente los mismos datos
+    val sharedMapViewModel: MapViewModel = viewModel()
 
     val navItems = listOf(
         BottomNavItem("map_home", "Mapa", Icons.Default.Map),
@@ -30,9 +35,7 @@ fun MainScreen(rootNavController: NavHostController) {
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ) {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceVariant) {
                 val navBackStackEntry by bottomNavController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
 
@@ -59,16 +62,24 @@ fun MainScreen(rootNavController: NavHostController) {
             modifier = Modifier.padding(paddingValues)
         ) {
             composable("map_home") {
-                MapHomeScreen()
+                MapHomeScreen(mapViewModel = sharedMapViewModel)
             }
             composable("my_pets") {
                 MyPetsScreen(
                     onNavigateToRegisterPet = { rootNavController.navigate(NavRoutes.RegisterPet.route) },
-                    onNavigateToPetZones = { /* Ya no lo usamos, se maneja globalmente */ }
+                    onNavigateToPetZones = { /* Ignorado, se hace vía checkboxes */ }
                 )
             }
             composable("my_zones") {
-                MyZonesScreen()
+                MyZonesScreen(
+                    viewModel = sharedMapViewModel,
+                    onNavigateToMap = {
+                        bottomNavController.navigate("map_home") {
+                            popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                        }
+                    }
+                )
             }
         }
     }
