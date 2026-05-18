@@ -1,7 +1,6 @@
 package com.frontend.petfinder.pets.presentation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,206 +9,244 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.frontend.petfinder.core.domain.EstadoMascota
-import java.util.Locale
+import com.frontend.petfinder.core.theme.PrimaryOrange
+import com.frontend.petfinder.pets.presentation.components.Base64Image
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MyPetsScreen(
     viewModel: MyPetsViewModel = viewModel(),
-    onNavigateToRegisterPet: () -> Unit,
-    onNavigateToPetZones: (String) -> Unit // Manda el ID de la mascota a la pantalla del Mapa de Zonas
+    onNavigateToRegisterPet: () -> Unit
 ) {
     val pets by viewModel.pets.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
+    val selectedQr by viewModel.selectedQrBase64.collectAsState()
+    val qrError by viewModel.qrErrorMessage.collectAsState()
 
-    // Cargar la lista automáticamente al entrar a la pantalla
+    var showQrDialog by remember { mutableStateOf(false) }
+
+    // ¡EL GATILLO QUE SOLUCIONA TU PROBLEMA!
     LaunchedEffect(Unit) {
         viewModel.loadMyPets()
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            TopAppBar(
+            CenterAlignedTopAppBar(
                 title = {
                     Text(
                         "Mis Mascotas",
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        fontWeight = FontWeight.ExtraBold,
+                        style = MaterialTheme.typography.titleLarge
                     )
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
                 )
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
+            FloatingActionButton(
                 onClick = onNavigateToRegisterPet,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                icon = { Icon(Icons.Default.Add, contentDescription = "Añadir") },
-                text = { Text("Añadir Mascota") }
-            )
+                containerColor = PrimaryOrange,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .padding(bottom = 80.dp)
+                    .shadow(8.dp, CircleShape)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Registrar Mascota")
+            }
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-        ) {
-            // 1. Estado de Carga
-            if (isLoading) {
+        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+
+            if (isLoading && pets.isEmpty()) { // Solo mostramos cargando si la lista está vacía
                 CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
-                    color = MaterialTheme.colorScheme.primary
+                    color = PrimaryOrange
                 )
-            }
-            // 2. Estado de Error (Sin internet)
-            else if (errorMessage != null) {
+            } else if (pets.isEmpty()) {
                 Column(
-                    modifier = Modifier.align(Alignment.Center),
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(Icons.Default.Warning, contentDescription = "Error", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(48.dp))
+                    Icon(Icons.Default.Pets, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Button(onClick = { viewModel.loadMyPets() }) {
-                        Text("Reintentar")
-                    }
+                    Text("Aún no has registrado mascotas.", color = Color.Gray)
                 }
-            }
-            // 3. Estado Vacío (Aún no registró a nadie)
-            else if (pets.isEmpty()) {
-                Column(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(Icons.Default.Pets, contentDescription = "Sin mascotas", tint = Color.Gray, modifier = Modifier.size(64.dp))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Aún no tienes mascotas registradas.", color = Color.Gray, style = MaterialTheme.typography.bodyLarge)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("¡Añade a tu mejor amigo para empezar!", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            // 4. Lista de Mascotas (¡Éxito!)
-            else {
+            } else {
                 LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxSize()
+                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 120.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    items(pets) { pet ->
-                        PetCard(
-                            pet = pet,
-                            onClick = { onNavigateToPetZones(pet.mascotaId) }
-                        )
+                    items(pets, key = { it.mascotaId }) { pet ->
+                        val imageUrl = pet.fotos?.find { it.esPrincipal }?.fotoUrl ?: pet.fotos?.firstOrNull()?.fotoUrl
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(320.dp)
+                                .shadow(12.dp, RoundedCornerShape(32.dp)),
+                            shape = RoundedCornerShape(32.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                        ) {
+                            Box(modifier = Modifier.fillMaxSize()) {
+                                if (imageUrl != null) {
+                                    AsyncImage(
+                                        model = imageUrl,
+                                        contentDescription = "Foto de ${pet.nombre}",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.surfaceVariant),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(Icons.Default.Pets, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
+                                    }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(160.dp)
+                                        .align(Alignment.BottomCenter)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                                            )
+                                        )
+                                )
+
+                                val statusColor = when (pet.estado) {
+                                    "en_casa" -> Color(0xFF4CAF50)
+                                    "en_paseo" -> PrimaryOrange
+                                    "extraviada" -> Color(0xFFE53935)
+                                    else -> Color.Gray
+                                }
+
+                                Surface(
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .padding(16.dp),
+                                    shape = RoundedCornerShape(50.dp),
+                                    color = statusColor.copy(alpha = 0.9f)
+                                ) {
+                                    Text(
+                                        text = pet.estado.uppercase().replace("_", " "),
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .align(Alignment.BottomStart)
+                                        .padding(24.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.Bottom
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = pet.nombre,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = Color.White
+                                        )
+                                        Text(
+                                            text = pet.tipoMascota?.nombre ?: "Mascota",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.White.copy(alpha = 0.8f)
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.loadPetQr(pet.mascotaId)
+                                            showQrDialog = true
+                                        },
+                                        modifier = Modifier
+                                            .size(56.dp)
+                                            .background(Color.White, CircleShape)
+                                            .shadow(4.dp, CircleShape)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCodeScanner,
+                                            contentDescription = "Ver QR",
+                                            tint = PrimaryOrange,
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
-    }
-}
 
-// Componente visual independiente para cada Tarjeta de mascota
-@Composable
-fun PetCard(
-    pet: com.frontend.petfinder.pets.data.PetListItemDto,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
-        shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Foto de la mascota usando Coil (AsyncImage)
-            val fotoUrl = pet.fotos?.find { it.esPrincipal }?.fotoUrl
-            AsyncImage(
-                model = fotoUrl ?: "https://res.cloudinary.com/demo/image/upload/v1312461204/sample.jpg", // Imagen por defecto si no tiene foto
-                contentDescription = "Foto de ${pet.nombre}",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-            )
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            // Información de texto
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = pet.nombre,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = pet.tipoMascota?.nombre ?: "Mascota",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Píldora de Estado Inteligente (Colores automáticos)
-                val (estadoText, estadoColor, estadoIcon) = when (pet.estado) {
-                    EstadoMascota.EN_CASA.valor -> Triple("En casa", Color(0xFF4CAF50), Icons.Outlined.Home) // Verde
-                    EstadoMascota.EN_PASEO.valor -> Triple("En paseo", Color(0xFF2196F3), Icons.Default.Pets) // Azul
-                    EstadoMascota.EXTRAVIADA.valor -> Triple("Extraviada", Color(0xFFF44336), Icons.Default.Warning) // Rojo
-                    EstadoMascota.RECUPERADA.valor -> Triple("Recuperada", Color(0xFFFF9800), Icons.Default.Pets) // Naranja
-                    else -> Triple(pet.estado.replace("_", " ")
-                        .replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
-                        Color.Gray, Icons.Default.Pets)
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = estadoColor.copy(alpha = 0.15f), // Fondo semitransparente del mismo color
-                    contentColor = estadoColor
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+        if (showQrDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    showQrDialog = false
+                    viewModel.clearSelectedQr()
+                },
+                containerColor = Color.White,
+                shape = RoundedCornerShape(24.dp),
+                title = { Text("Placa QR Activa", fontWeight = FontWeight.ExtraBold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(estadoIcon, contentDescription = null, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = estadoText,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (qrError != null) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(text = qrError!!, color = Color.Red, textAlign = TextAlign.Center)
+                        } else if (selectedQr == null) {
+                            CircularProgressIndicator(color = PrimaryOrange)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Generando placa...")
+                        } else {
+                            Base64Image(base64String = selectedQr!!, modifier = Modifier.size(220.dp))
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showQrDialog = false
+                        viewModel.clearSelectedQr()
+                    }) {
+                        Text("Cerrar", color = PrimaryOrange, fontWeight = FontWeight.Bold)
                     }
                 }
-            }
+            )
         }
     }
 }

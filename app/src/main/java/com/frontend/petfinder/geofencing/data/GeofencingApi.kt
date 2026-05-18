@@ -1,5 +1,6 @@
 package com.frontend.petfinder.geofencing.data
 
+import com.google.gson.annotations.SerializedName
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -14,7 +15,11 @@ import retrofit2.http.Path
 
 data class PointDto(val lat: Double, val lng: Double)
 
-data class GeometryDto(val type: String, val coordinates: List<List<List<Double>>>)
+// Hecho nullable (?) para evitar crashes si el backend no lo envía
+data class GeometryDto(
+    val type: String? = null,
+    val coordinates: List<List<List<Double>>>? = emptyList()
+)
 
 data class UserMarkerDto(
     val personaId: String,
@@ -38,7 +43,9 @@ data class ZonePetDto(
     val mascotaId: String,
     val nombre: String,
     val estado: String,
-    val fotoUrl: String?
+    val fotoUrl: String?,
+    // ¡NUEVO! Lee la ubicación si existe, si es null no pasa nada
+    val ubicacion: PointDto? = null
 )
 
 data class MarkersDto(
@@ -56,34 +63,49 @@ data class MapSnapshotResponse(
 // =============================================================================
 
 // Este modelo sirve tanto para el Snapshot del mapa como para el detalle de la zona.
-// Usamos valores nulos (?) por defecto para los campos que varían entre rutas.
 data class ZoneDto(
     val zonaId: Int,
-    val nombre: String? = null,       // Lo envía el endpoint del Snapshot
-    val nombreZona: String? = null,   // Lo envía el endpoint de CRUD de Zonas
-    val tipo: String,                 // "circulo" o "poligono"
+    val nombre: String? = null,
+    val nombreZona: String? = null,
+    val tipo: String? = null, // Nullable para mayor seguridad
     val centro: PointDto? = null,
     val radioMetros: Double? = null,
     val geometria: GeometryDto? = null,
     val estaActiva: Boolean? = null,
-    val mascotas: List<ZonePetDto>? = null, // Mascotas en el Snapshot
-    val mascotaIds: List<String>? = null    // IDs en el CRUD de Zonas
+    val mascotas: List<ZonePetDto>? = null,
+    val mascotaIds: List<String>? = null
 )
+
+// --- NUEVOS DTOs PARA GET /geofencing/zones (Snake Case) ---
+
+data class ZonePetDetailDto(
+    @SerializedName("mascota_id") val mascotaId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("estado") val estado: String,
+    @SerializedName("tipo_mascota") val tipoMascota: String
+)
+
+data class ZoneWithPetsDto(
+    @SerializedName("zona_id") val zonaId: Int,
+    @SerializedName("nombre_zona") val nombreZona: String?,
+    @SerializedName("tipo") val tipo: String?,
+    @SerializedName("radio_metros") val radioMetros: Double?,
+    @SerializedName("esta_activa") val estaActiva: Boolean?,
+    @SerializedName("centro_lat") val centroLat: Double?,
+    @SerializedName("centro_lng") val centroLng: Double?,
+    @SerializedName("mascotas") val mascotas: List<ZonePetDetailDto>? = emptyList()
+)
+
+// --- DTOs PARA ENVIAR Y ACTUALIZAR DATOS ---
 
 // DTO para ENVIAR una nueva zona al servidor
 data class CreateZoneRequest(
     val nombreZona: String,
     val tipo: String, // "circulo" o "poligono"
-
-    // Solo para círculos
     val lat: Double? = null,
     val lng: Double? = null,
     val radioMetros: Double? = null,
-
-    // Solo para polígonos
     val coordenadas: List<PointDto>? = null,
-
-    // Opcional: para asignar la misma zona a Firulais y a Migel a la vez
     val mascotaIds: List<String>? = null
 )
 
@@ -130,18 +152,22 @@ interface GeofencingApi {
         @Path("petId") petId: String
     ): Response<List<ZoneDto>>
 
+    // ¡NUEVO ENDPOINT GLOBAL PARA LA PANTALLA DE ZONAS!
+    @GET("geofencing/zones")
+    suspend fun getAllUserZones(): Response<List<ZoneWithPetsDto>>
+
     // Obtener el detalle de una zona
     @GET("geofencing/zones/{id}")
     suspend fun getZoneDetail(
         @Path("id") zonaId: Int
     ): Response<ZoneDto>
 
-    // Actualizar una zona (renombrar, cambiar radio, editar vértices)
+    // Actualizar una zona (renombrar, cambiar radio, editar vértices, encender/apagar)
     @PUT("geofencing/zones/{id}")
     suspend fun updateZone(
         @Path("id") zonaId: Int,
         @Body request: UpdateZoneRequest
-    ): Response<ZoneDto>
+    ): Response<Any> // Usamos Any porque solo nos importa si es 200 OK
 
     // Eliminar la geovalla
     @DELETE("geofencing/zones/{id}")

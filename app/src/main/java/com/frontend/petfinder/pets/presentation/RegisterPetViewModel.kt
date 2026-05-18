@@ -5,16 +5,15 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.petfinder.core.network.RetrofitClient
+import com.frontend.petfinder.core.utils.ImageUtils
 import com.frontend.petfinder.pets.data.PetApi
 import com.frontend.petfinder.pets.data.TipoMascotaDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
 import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody // ¡Nuevos imports mágicos de OkHttp!
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class RegisterPetViewModel : ViewModel() {
 
@@ -69,6 +68,7 @@ class RegisterPetViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = RegisterPetState.Loading
             try {
+                // Instanciamos el API manualmente sin usar @Inject
                 val api = RetrofitClient.instance.create(PetApi::class.java)
 
                 val nombreBody = nombre.value.toRequestBodyText()
@@ -77,25 +77,19 @@ class RegisterPetViewModel : ViewModel() {
                 val colorBody = colorPrimario.value.ifBlank { null }?.toRequestBodyText()
                 val rasgosBody = rasgosParticulares.value.ifBlank { null }?.toRequestBodyText()
 
-                // 1. Procesamos las fotos con la nueva sintaxis de Kotlin OkHttp
-                val fotosPart: List<MultipartBody.Part> = fotosSeleccionadas.value.mapNotNull { uri ->
-                    val bytes = context.contentResolver.openInputStream(uri)?.readBytes()
-                    if (bytes != null) {
-                        // AQUÍ APLICAMOS LA CORRECCIÓN DE OBSOLESCENCIA
-                        val reqFile = bytes.toRequestBody("image/jpeg".toMediaTypeOrNull())
-                        MultipartBody.Part.createFormData("fotos", "foto_${System.currentTimeMillis()}.jpg", reqFile)
-                    } else null
-                }
+                // 1. Usamos el ImageUtils creado anteriormente para comprimir y limitar a 4 fotos
+                val fotosPart = ImageUtils.processImagesForUpload(context, fotosSeleccionadas.value)
 
                 // 2. Solo enviamos el índice 0 si realmente hay fotos adjuntas
                 val fotoIndexBody = if (fotosPart.isNotEmpty()) "0".toRequestBodyText() else null
 
+                // 3. Llamada a la API pasando TODOS los parámetros, incluyendo rasgosParticulares
                 val response = api.registerPet(
                     nombre = nombreBody,
                     tipoId = tipoIdBody,
                     sexo = sexoBody,
                     colorPrimario = colorBody,
-                    rasgosParticulares = rasgosBody,
+                    rasgosParticulares = rasgosBody, // <- Falta corregida
                     fotoPrincipalIndex = fotoIndexBody,
                     fotos = fotosPart.ifEmpty { null }
                 )
@@ -107,15 +101,14 @@ class RegisterPetViewModel : ViewModel() {
                 } else {
                     val errorDelServidor = response.errorBody()?.string() ?: "Error desconocido"
                     println("Rechazo del backend: $errorDelServidor")
-                    _uiState.value = RegisterPetState.Error("Error 400: Revisa tu consola (Logcat) para ver el motivo exacto.")
+                    _uiState.value = RegisterPetState.Error("Error 400: El servidor rechazó los datos.")
                 }
             } catch (e: Exception) {
-                _uiState.value = RegisterPetState.Error("Error de red: ${e.message}")
+                _uiState.value = RegisterPetState.Error("Error de red: ${e.localizedMessage}")
             }
         }
     }
 
-    // AQUÍ APLICAMOS LA OTRA CORRECCIÓN PARA TEXTOS
     private fun String.toRequestBodyText(): RequestBody {
         return this.toRequestBody(null)
     }

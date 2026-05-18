@@ -79,6 +79,10 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.7.7")
     // Librería oficial de íconos de Material Design para Compose
     implementation("androidx.compose.material:material-icons-extended")
-    implementation("io.coil-kt:coil-compose:2.5.0")
+    implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("com.google.android.gms:play-services-location:21.2.0")
+    // Cliente oficial de Socket.io
+    implementation("io.socket:socket.io-client:2.1.0")
+    // Gson (ya lo tienes, pero lo usaremos para parsear los eventos del socket)
+    implementation("com.google.code.gson:gson:2.10.1")
 }

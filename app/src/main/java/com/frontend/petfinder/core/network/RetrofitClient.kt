@@ -6,13 +6,15 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    // Si pruebas en un celular físico, cambia esta IP por la IP local de tu PC (ej. 192.168.1.X)
-    private const val BASE_URL = "https://backend-petfinder-three.vercel.app/"
+    // Apuntamos al servidor de Render que tiene habilitado WebSockets y base de datos
+    private const val BASE_URL = "https://backend-petfinder.onrender.com/"
 
     val authInterceptor = AuthInterceptor()
+    val prismaErrorInterceptor = PrismaErrorInterceptor() // Instanciamos el nuevo interceptor
 
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
+        .addInterceptor(prismaErrorInterceptor) // Lo agregamos a la cadena de OkHttp
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .build()

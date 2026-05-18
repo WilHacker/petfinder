@@ -1,13 +1,21 @@
 package com.frontend.petfinder.core.navigation
 
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.ShareLocation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -15,6 +23,8 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.frontend.petfinder.core.theme.PrimaryOrange
+import com.frontend.petfinder.core.theme.TextGray
 import com.frontend.petfinder.geofencing.presentation.MapHomeScreen
 import com.frontend.petfinder.geofencing.presentation.MapViewModel
 import com.frontend.petfinder.geofencing.presentation.MyZonesScreen
@@ -27,62 +37,148 @@ fun MainScreen(rootNavController: NavHostController) {
     // CEREBRO COMPARTIDO: Ambas pestañas verán exactamente los mismos datos
     val sharedMapViewModel: MapViewModel = viewModel()
 
-    val navItems = listOf(
-        BottomNavItem("map_home", "Mapa", Icons.Default.Map),
-        BottomNavItem("my_pets", "Mascotas", Icons.Default.Pets),
-        BottomNavItem("my_zones", "Zonas", Icons.Default.ShareLocation)
-    )
-
     Scaffold(
         bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceVariant) {
-                val navBackStackEntry by bottomNavController.currentBackStackEntryAsState()
-                val currentRoute = navBackStackEntry?.destination?.route
+            val navBackStackEntry by bottomNavController.currentBackStackEntryAsState()
+            val currentRoute = navBackStackEntry?.destination?.route
 
-                navItems.forEach { item ->
-                    NavigationBarItem(
-                        icon = { Icon(item.icon, contentDescription = item.title) },
-                        label = { Text(item.title) },
-                        selected = currentRoute == item.route,
-                        onClick = {
-                            bottomNavController.navigate(item.route) {
+            // Nuestra Barra Customizada
+            CustomBottomNavigationBar(
+                currentRoute = currentRoute,
+                onNavigate = { route ->
+                    bottomNavController.navigate(route) {
+                        popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            NavHost(
+                navController = bottomNavController,
+                startDestination = "map_home",
+                modifier = Modifier.padding(paddingValues)
+            ) {
+                composable("map_home") {
+                    MapHomeScreen(mapViewModel = sharedMapViewModel)
+                }
+                composable("my_pets") {
+                    MyPetsScreen(
+                        onNavigateToRegisterPet = { rootNavController.navigate(NavRoutes.RegisterPet.route) }
+                    )
+                }
+                composable("my_zones") {
+                    MyZonesScreen(
+                        viewModel = sharedMapViewModel,
+                        onNavigateToMap = {
+                            bottomNavController.navigate("map_home") {
                                 popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
                                 launchSingleTop = true
-                                restoreState = true
                             }
                         }
                     )
                 }
             }
         }
-    ) { paddingValues ->
-        NavHost(
-            navController = bottomNavController,
-            startDestination = "map_home",
-            modifier = Modifier.padding(paddingValues)
+    }
+}
+
+@Composable
+fun CustomBottomNavigationBar(
+    currentRoute: String?,
+    onNavigate: (String) -> Unit
+) {
+    // ¡AQUÍ ESTÁ LA SOLUCIÓN AL BUG!
+    // Envolvemos la barra en un Box que respeta los botones del celular
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.Transparent)
+            .navigationBarsPadding() // <-- Empuja todo hacia arriba del menú del sistema
+    ) {
+        // Contenedor principal de nuestra barra flotante
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(90.dp) // Altura total para dejar espacio al botón que sobresale
         ) {
-            composable("map_home") {
-                MapHomeScreen(mapViewModel = sharedMapViewModel)
+            // Fondo blanco curvo de la barra
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(65.dp) // La barra blanca es más baja que el contenedor
+                    .align(Alignment.BottomCenter)
+                    .shadow(
+                        elevation = 16.dp,
+                        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
+                    ),
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                color = Color.White
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Item Izquierdo (Mapa / Home)
+                    BottomNavIcon(
+                        icon = Icons.Default.Home,
+                        isSelected = currentRoute == "map_home",
+                        onClick = { onNavigate("map_home") }
+                    )
+
+                    // Espacio vacío en el medio para abrazar al botón flotante
+                    Spacer(modifier = Modifier.width(60.dp))
+
+                    // Item Derecho (Zonas Seguras)
+                    BottomNavIcon(
+                        icon = Icons.Default.ShareLocation,
+                        isSelected = currentRoute == "my_zones",
+                        onClick = { onNavigate("my_zones") }
+                    )
+                }
             }
-            composable("my_pets") {
-                MyPetsScreen(
-                    onNavigateToRegisterPet = { rootNavController.navigate(NavRoutes.RegisterPet.route) },
-                    onNavigateToPetZones = { /* Ignorado, se hace vía checkboxes */ }
+
+            // Botón Naranja Central Flotante (Mis Mascotas)
+            FloatingActionButton(
+                onClick = { onNavigate("my_pets") },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = 8.dp) // Lo bajamos ligeramente para que "corte" el borde
+                    .size(64.dp),
+                shape = CircleShape,
+                containerColor = PrimaryOrange,
+                contentColor = Color.White,
+                elevation = FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 8.dp,
+                    pressedElevation = 12.dp
                 )
-            }
-            composable("my_zones") {
-                MyZonesScreen(
-                    viewModel = sharedMapViewModel,
-                    onNavigateToMap = {
-                        bottomNavController.navigate("map_home") {
-                            popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                        }
-                    }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Pets,
+                    contentDescription = "Mis Mascotas",
+                    modifier = Modifier.size(32.dp)
                 )
             }
         }
     }
 }
 
-data class BottomNavItem(val route: String, val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+@Composable
+fun BottomNavIcon(
+    icon: ImageVector,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val tintColor = if (isSelected) PrimaryOrange else TextGray
+    IconButton(onClick = onClick) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = tintColor,
+            modifier = Modifier.size(30.dp)
+        )
+    }
+}
