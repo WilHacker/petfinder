@@ -341,7 +341,7 @@ fun MapHomeScreen(
                             Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Radio: ${circleRadius.toInt()} metros", fontWeight = FontWeight.Bold, color = PrimaryOrange)
                                 Slider(
-                                    value = circleRadius.toFloat(), onValueChange = { mapViewModel.circleRadius.value = it.toDouble() },
+                                    value = circleRadius.toFloat(), onValueChange = { mapViewModel.updateCircleRadius(it.toDouble()) },
                                     valueRange = 20f..1000f, colors = SliderDefaults.colors(thumbColor = PrimaryOrange, activeTrackColor = PrimaryOrange)
                                 )
                             }

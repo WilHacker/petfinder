@@ -58,22 +58,22 @@ fun MainScreen(rootNavController: NavHostController) {
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             NavHost(
                 navController = bottomNavController,
-                startDestination = "map_home",
+                startDestination = NavRoutes.MapHome.route,
                 modifier = Modifier.padding(paddingValues)
             ) {
-                composable("map_home") {
+                composable(NavRoutes.MapHome.route) {
                     MapHomeScreen(mapViewModel = sharedMapViewModel)
                 }
-                composable("my_pets") {
+                composable(NavRoutes.MyPets.route) {
                     MyPetsScreen(
                         onNavigateToRegisterPet = { rootNavController.navigate(NavRoutes.RegisterPet.route) }
                     )
                 }
-                composable("my_zones") {
+                composable(NavRoutes.MyZones.route) {
                     MyZonesScreen(
                         viewModel = sharedMapViewModel,
                         onNavigateToMap = {
-                            bottomNavController.navigate("map_home") {
+                            bottomNavController.navigate(NavRoutes.MapHome.route) {
                                 popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
                                 launchSingleTop = true
                             }
@@ -125,8 +125,8 @@ fun CustomBottomNavigationBar(
                     // Item Izquierdo (Mapa / Home)
                     BottomNavIcon(
                         icon = Icons.Default.Home,
-                        isSelected = currentRoute == "map_home",
-                        onClick = { onNavigate("map_home") }
+                        isSelected = currentRoute == NavRoutes.MapHome.route,
+                        onClick = { onNavigate(NavRoutes.MapHome.route) }
                     )
 
                     // Espacio vacío en el medio para abrazar al botón flotante
@@ -135,15 +135,15 @@ fun CustomBottomNavigationBar(
                     // Item Derecho (Zonas Seguras)
                     BottomNavIcon(
                         icon = Icons.Default.ShareLocation,
-                        isSelected = currentRoute == "my_zones",
-                        onClick = { onNavigate("my_zones") }
+                        isSelected = currentRoute == NavRoutes.MyZones.route,
+                        onClick = { onNavigate(NavRoutes.MyZones.route) }
                     )
                 }
             }
 
             // Botón Naranja Central Flotante (Mis Mascotas)
             FloatingActionButton(
-                onClick = { onNavigate("my_pets") },
+                onClick = { onNavigate(NavRoutes.MyPets.route) },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .offset(y = 8.dp) // Lo bajamos ligeramente para que "corte" el borde

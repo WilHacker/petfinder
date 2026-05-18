@@ -4,10 +4,12 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.POST
 
-// --- OBJETOS DE TRANSFERENCIA DE DATOS (DTOs) ---
+// =============================================================================
+// DTOs de petición
+// =============================================================================
 
 data class MedioContactoDto(
-    val tipo: String,
+    val tipo: String,  // WhatsApp | Celular | Fijo | Telegram
     val valor: String
 )
 
@@ -26,29 +28,54 @@ data class LoginRequest(
     val clave: String
 )
 
+data class RefreshTokenRequest(
+    val refreshToken: String
+)
+
+// =============================================================================
+// DTOs de respuesta
+// =============================================================================
+
 data class UsuarioDto(
     val usuarioId: String,
     val correoElectronico: String,
     val nombre: String,
-    val apellidoPaterno: String
+    val apellidoPaterno: String,
+    val rol: String  // "usuario" | "admin"
 )
 
-data class LoginResponse(
+data class AuthResponse(
     val accessToken: String,
+    val refreshToken: String,
     val usuario: UsuarioDto
 )
 
-// --- INTERFAZ DE LA API ---
+data class RefreshTokenResponse(
+    val accessToken: String,
+    val refreshToken: String
+)
+
+// =============================================================================
+// Interfaz de la API
+// =============================================================================
 
 interface AuthApi {
 
     @POST("auth/register")
     suspend fun registerOwner(
         @Body request: RegisterRequest
-    ): Response<Unit>
+    ): Response<AuthResponse>
 
     @POST("auth/login")
     suspend fun loginOwner(
         @Body request: LoginRequest
-    ): Response<LoginResponse>
+    ): Response<AuthResponse>
+
+    @POST("auth/refresh")
+    suspend fun refreshToken(
+        @Body request: RefreshTokenRequest
+    ): Response<RefreshTokenResponse>
+
+    @POST("auth/logout")
+    suspend fun logout(): Response<Map<String, String>>
 }

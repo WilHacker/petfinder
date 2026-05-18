@@ -45,3 +45,7 @@ data class LocationRequest(
     @SerializedName("lat") val lat: Double,
     @SerializedName("lng") val lng: Double
 )
+
+data class FcmTokenRequest(
+    @SerializedName("tokenFcm") val tokenFcm: String
+)

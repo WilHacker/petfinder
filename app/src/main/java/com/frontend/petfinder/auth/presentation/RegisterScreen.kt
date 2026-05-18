@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -20,6 +21,7 @@ fun RegisterScreen(
     viewModel: RegisterViewModel = viewModel(),
     onNavigateNext: () -> Unit
 ) {
+    val context = LocalContext.current
     val nombre by viewModel.nombre.collectAsState()
     val apellidoPaterno by viewModel.apellidoPaterno.collectAsState()
     val apellidoMaterno by viewModel.apellidoMaterno.collectAsState()
@@ -129,7 +131,7 @@ fun RegisterScreen(
                 // Nuestro botón naranja redondeado
                 PetFinderButton(
                     text = "Registrarme",
-                    onClick = { viewModel.registerOwner() }
+                    onClick = { viewModel.registerOwner(context) }
                 )
             }
 

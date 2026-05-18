@@ -1,83 +1,21 @@
 package com.frontend.petfinder.pets.data
 
+import com.frontend.petfinder.pets.data.dto.*
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
-import okhttp3.ResponseBody // ¡NUEVA IMPORTACIÓN REQUERIDA!
+import okhttp3.ResponseBody
 import retrofit2.Response
-import retrofit2.http.GET
-import retrofit2.http.Multipart
-import retrofit2.http.POST
-import retrofit2.http.Part
-import com.frontend.petfinder.pets.data.dto.*
 import retrofit2.http.*
-
-// =============================================================================
-// DTOs para el registro de mascotas y la Placa QR
-// =============================================================================
-
-data class PlacaQrDto(
-    val placaId: String,
-    val tokenAcceso: String,
-    val estaActiva: Boolean
-)
-
-data class RegisterPetResponse(
-    val mascotaId: String,
-    val nombre: String,
-    val placaQr: PlacaQrDto?
-)
-
-// =============================================================================
-// DTOs para el catálogo (Dropdown) de tipos de mascota
-// =============================================================================
-
-data class TipoMascotaDto(
-    val tipoId: Int,
-    val nombre: String
-)
-
-// =============================================================================
-// NUEVOS DTOs para listar "Mis Mascotas" (Para la pantalla de Mis Zonas)
-// =============================================================================
-
-data class FotoMascotaDto(
-    val fotoUrl: String,
-    val esPrincipal: Boolean
-)
-
-data class TipoMascotaRefDto(
-    val tipoId: Int,
-    val nombre: String
-)
-
-data class PetListItemDto(
-    val mascotaId: String,
-    val nombre: String,
-    val estado: String,
-    val tipoMascota: TipoMascotaRefDto?,
-    val fotos: List<FotoMascotaDto>?
-)
-// DTO para fijar la ubicación manualmente
-data class UpdateLocationRequest(
-    val lat: Double,
-    val lng: Double
-)
-
-// =============================================================================
-// INTERFAZ DE LA API (Retrofit)
-// =============================================================================
 
 interface PetApi {
 
-    // 1. Obtener la lista dinámica de tipos (Perro, Gato, etc.) para el formulario
+    // --- Tipos de mascota ---
+
     @GET("tipos-mascota")
     suspend fun getTiposMascota(): Response<List<TipoMascotaDto>>
 
-    // 2. NUEVO: Obtener la lista de mis mascotas registradas
-    @GET("pets")
-    suspend fun getMyPets(): Response<List<PetListItemDto>>
+    // --- CRUD de mascotas ---
 
-    // 3. Registrar una nueva mascota enviando texto y fotos (Multipart)
     @Multipart
     @POST("pets")
     suspend fun registerPet(
@@ -90,20 +28,60 @@ interface PetApi {
         @Part fotos: List<MultipartBody.Part>?
     ): Response<RegisterPetResponse>
 
-    // ¡CAMBIO AQUÍ! Retornamos ResponseBody para que Gson no intente parsear el HTML/Texto crudo
+    @GET("pets")
+    suspend fun getMyPets(): Response<List<PetListItemDto>>
+
+    @GET("pets/{id}")
+    suspend fun getPetDetail(@Path("id") petId: String): Response<PetListItemDto>
+
+    @PUT("pets/{id}")
+    suspend fun updatePet(
+        @Path("id") petId: String,
+        @Body request: UpdatePetRequest
+    ): Response<PetListItemDto>
+
+    @DELETE("pets/{id}")
+    suspend fun deletePet(@Path("id") petId: String): Response<Map<String, String>>
+
+    // --- QR ---
+
     @GET("pets/{id}/qr")
     suspend fun getPetQrCode(@Path("id") petId: String): Response<ResponseBody>
 
     @GET("pets/{id}/card")
     suspend fun getPublicPetCard(@Path("id") petId: String): Response<PublicPetCardDto>
 
+    // --- Estado y ubicación ---
+
     @PUT("pets/{id}/status")
     suspend fun updatePetStatus(
         @Path("id") petId: String,
         @Body request: UpdateStatusRequest
-    ): Response<Any> // Puede devolver el Pet actualizado
+    ): Response<Any>
 
-    // --- Co-Propietarios ---
+    @PUT("pets/{id}/location")
+    suspend fun updatePetLocation(
+        @Path("id") petId: String,
+        @Body request: UpdateLocationRequest
+    ): Response<Map<String, String>>
+
+    // --- Fotos ---
+
+    @Multipart
+    @POST("pets/{id}/photos")
+    suspend fun addPetPhotos(
+        @Path("id") petId: String,
+        @Part("fotoPrincipalIndex") fotoPrincipalIndex: RequestBody?,
+        @Part fotos: List<MultipartBody.Part>
+    ): Response<List<FotoMascotaDto>>
+
+    @DELETE("pets/{id}/photos/{fotoId}")
+    suspend fun deletePetPhoto(
+        @Path("id") petId: String,
+        @Path("fotoId") fotoId: Int
+    ): Response<Map<String, String>>
+
+    // --- Co-propietarios ---
 
     @POST("pets/{id}/owners")
     suspend fun addPetOwner(
@@ -117,26 +95,11 @@ interface PetApi {
         @Path("personaId") personaId: String
     ): Response<Map<String, String>>
 
-    // --- Multimedia (Límites: Máx 4 fotos, 5MB c/u) ---
+    // --- Historial (Sprint 2) ---
 
-    @Multipart
-    @POST("pets/{id}/photos")
-    suspend fun replacePetPhotos(
-        @Path("id") petId: String,
-        @Part("fotoPrincipalIndex") fotoPrincipalIndex: RequestBody?,
-        @Part fotos: List<MultipartBody.Part>
-    ): Response<List<FotoMascotaDto>>
+    @GET("pets/{id}/scans")
+    suspend fun getPetScans(@Path("id") petId: String): Response<List<PetScanDto>>
 
-    @DELETE("pets/{id}/photos/{fotoId}")
-    suspend fun deletePetPhoto(
-        @Path("id") petId: String,
-        @Path("fotoId") fotoId: Int
-    ): Response<Map<String, String>>
-
-    // NUEVO: Fijar ubicación manual de la mascota sin iniciar paseo
-    @PUT("pets/{id}/location")
-    suspend fun updatePetLocation(
-        @Path("id") petId: String,
-        @Body request: UpdateLocationRequest
-    ): Response<Map<String, String>>
+    @GET("pets/{id}/reports")
+    suspend fun getPetReports(@Path("id") petId: String): Response<List<PetReportDto>>
 }

@@ -2,7 +2,80 @@ package com.frontend.petfinder.pets.data.dto
 
 import com.google.gson.annotations.SerializedName
 
-// --- Respuestas ---
+// =============================================================================
+// DTOs de respuesta — Fotos
+// =============================================================================
+
+data class FotoMascotaDto(
+    @SerializedName("fotoId") val fotoId: Int,
+    @SerializedName("fotoUrl") val fotoUrl: String,
+    @SerializedName("esPrincipal") val esPrincipal: Boolean
+)
+
+// =============================================================================
+// DTOs de respuesta — Tipos de mascota
+// =============================================================================
+
+data class TipoMascotaDto(
+    @SerializedName("tipoId") val tipoId: Int,
+    @SerializedName("nombre") val nombre: String
+)
+
+data class TipoMascotaRefDto(
+    @SerializedName("tipoId") val tipoId: Int,
+    @SerializedName("nombre") val nombre: String
+)
+
+// =============================================================================
+// DTOs de respuesta — Placa QR
+// =============================================================================
+
+data class PlacaQrDto(
+    @SerializedName("placaId") val placaId: String,
+    @SerializedName("tokenAcceso") val tokenAcceso: String,
+    @SerializedName("estaActiva") val estaActiva: Boolean
+)
+
+// =============================================================================
+// DTOs de respuesta — Registro y listado de mascotas
+// =============================================================================
+
+data class RegisterPetResponse(
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("placaQr") val placaQr: PlacaQrDto?
+)
+
+data class PetListItemDto(
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("estado") val estado: String,
+    @SerializedName("tipoMascota") val tipoMascota: TipoMascotaRefDto?,
+    @SerializedName("fotos") val fotos: List<FotoMascotaDto>?
+)
+
+// =============================================================================
+// DTOs de respuesta — Ficha pública del QR
+// =============================================================================
+
+data class ContactoPublicoDto(
+    @SerializedName("tipo") val tipo: String,
+    @SerializedName("valor") val valor: String
+)
+
+data class PropietarioPublicoDto(
+    @SerializedName("personaId") val personaId: String,
+    @SerializedName("nombreCompleto") val nombreCompleto: String,
+    @SerializedName("fotoPerfilUrl") val fotoPerfilUrl: String?,
+    @SerializedName("tipoRelacion") val tipoRelacion: String,
+    @SerializedName("contactos") val contactos: List<ContactoPublicoDto> = emptyList()
+)
+
+data class FotoPublicaDto(
+    @SerializedName("fotoId") val fotoId: Int,
+    @SerializedName("url") val url: String,
+    @SerializedName("esPrincipal") val esPrincipal: Boolean
+)
 
 data class PublicPetCardDto(
     @SerializedName("mascotaId") val mascotaId: String,
@@ -12,35 +85,68 @@ data class PublicPetCardDto(
     @SerializedName("colorPrimario") val colorPrimario: String?,
     @SerializedName("rasgosParticulares") val rasgosParticulares: String?,
     @SerializedName("estado") val estado: String,
-    @SerializedName("fotos") val fotos: List<FotoMascotaDto>?,
+    @SerializedName("estaExtraviada") val estaExtraviada: Boolean,
+    @SerializedName("fotos") val fotos: List<FotoPublicaDto>?,
+    @SerializedName("fichaMedica") val fichaMedica: Any?,
+    @SerializedName("registrosMedicos") val registrosMedicos: List<Any>?,
     @SerializedName("propietarios") val propietarios: List<PropietarioPublicoDto>
 )
 
-data class FotoMascotaDto(
-    @SerializedName("fotoId") val fotoId: Int,
-    @SerializedName("fotoUrl") val fotoUrl: String,
-    @SerializedName("esPrincipal") val esPrincipal: Boolean
-)
-
-data class PropietarioPublicoDto(
-    @SerializedName("personaId") val personaId: String,
-    @SerializedName("nombreCompleto") val nombreCompleto: String,
-    @SerializedName("fotoPerfilUrl") val fotoPerfilUrl: String?,
-    @SerializedName("tipoRelacion") val tipoRelacion: String
-)
+// =============================================================================
+// DTOs de respuesta — Co-propietarios
+// =============================================================================
 
 data class PetOwnerRelationDto(
     @SerializedName("mascotaId") val mascotaId: String,
     @SerializedName("personaId") val personaId: String,
-    @SerializedName("tipoRelacion") val tipoRelacion: String, // Dueño Principal, Familiar, Cuidador
+    @SerializedName("tipoRelacion") val tipoRelacion: String,
     @SerializedName("recibeAlertas") val recibeAlertas: Boolean,
     @SerializedName("mostrarEnQr") val mostrarEnQr: Boolean
 )
 
-// --- Peticiones ---
+// =============================================================================
+// DTOs de respuesta — Historial de escaneos QR (Historia 12)
+// =============================================================================
+
+data class PetScanDto(
+    @SerializedName("escaneoId") val escaneoId: Int,
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("lat") val lat: Double?,
+    @SerializedName("lng") val lng: Double?,
+    @SerializedName("escaneadoEl") val escaneadoEl: String
+)
+
+// =============================================================================
+// DTOs de respuesta — Historial de reportes de extravío (Historia 9/11)
+// =============================================================================
+
+data class PetReportDto(
+    @SerializedName("reporte_id") val reporteId: Int,
+    @SerializedName("fecha_perdida") val fechaPerdida: String,
+    @SerializedName("recompensa") val recompensa: String,
+    @SerializedName("estado_reporte") val estadoReporte: String,
+    @SerializedName("lat") val lat: Double?,
+    @SerializedName("lng") val lng: Double?
+)
+
+// =============================================================================
+// DTOs de petición
+// =============================================================================
 
 data class UpdateStatusRequest(
-    @SerializedName("estado") val estado: String // en_casa, en_paseo, extraviada, recuperada
+    @SerializedName("estado") val estado: String // en_casa | en_paseo | extraviada | recuperada
+)
+
+data class UpdateLocationRequest(
+    @SerializedName("lat") val lat: Double,
+    @SerializedName("lng") val lng: Double
+)
+
+data class UpdatePetRequest(
+    @SerializedName("nombre") val nombre: String? = null,
+    @SerializedName("colorPrimario") val colorPrimario: String? = null,
+    @SerializedName("rasgosParticulares") val rasgosParticulares: String? = null,
+    @SerializedName("sexo") val sexo: String? = null
 )
 
 data class AddOwnerRequest(
@@ -48,4 +154,9 @@ data class AddOwnerRequest(
     @SerializedName("tipoRelacion") val tipoRelacion: String = "Cuidador",
     @SerializedName("recibeAlertas") val recibeAlertas: Boolean = true,
     @SerializedName("mostrarEnQr") val mostrarEnQr: Boolean = true
+)
+
+data class QrScanRequest(
+    @SerializedName("lat") val lat: Double?,
+    @SerializedName("lng") val lng: Double?
 )

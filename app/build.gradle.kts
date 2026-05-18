@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     id("com.google.android.libraries.mapsplatform.secrets-gradle-plugin")
+    id("com.google.gms.google-services")
 }
 
 android {
@@ -63,6 +64,8 @@ dependencies {
     // Consumo de la API RESTful (NestJS)
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
 
     // Google Maps y Geolocalización (Geofencing)
     implementation("com.google.android.gms:play-services-maps:18.2.0")
@@ -85,4 +88,11 @@ dependencies {
     implementation("io.socket:socket.io-client:2.1.0")
     // Gson (ya lo tienes, pero lo usaremos para parsear los eventos del socket)
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Persistencia de sesión (JWT + refreshToken)
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
+    // Firebase Cloud Messaging (push notifications)
+    implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 }

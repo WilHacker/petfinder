@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.petfinder.core.network.RetrofitClient
 import com.frontend.petfinder.pets.data.PetApi
-import com.frontend.petfinder.pets.data.PetListItemDto
+import com.frontend.petfinder.pets.data.dto.PetListItemDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

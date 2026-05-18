@@ -1,24 +1,20 @@
 package com.frontend.petfinder.core.network
 
+import com.frontend.petfinder.PetFinderApp
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.Response
 
 class AuthInterceptor : Interceptor {
-    // Nota: Más adelante conectaremos esto para leer el token guardado en el dispositivo
-    private var token: String? = null
-
-    fun setToken(newToken: String?) {
-        this.token = newToken
-    }
 
     override fun intercept(chain: Interceptor.Chain): Response {
-        val requestBuilder = chain.request().newBuilder()
-
-        // Si tenemos un token JWT, lo inyectamos en la cabecera Authorization
-        token?.let {
-            requestBuilder.addHeader("Authorization", "Bearer $it")
+        val token = runBlocking {
+            PetFinderApp.sessionManager.getAccessToken().first()
         }
-
-        return chain.proceed(requestBuilder.build())
+        val request = chain.request().newBuilder().apply {
+            token?.let { addHeader("Authorization", "Bearer $it") }
+        }.build()
+        return chain.proceed(request)
     }
 }
