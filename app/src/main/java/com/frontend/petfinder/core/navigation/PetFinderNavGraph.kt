@@ -162,6 +162,12 @@ fun PetFinderNavGraph(navController: NavHostController) {
                     deepLinks = listOf(
                         navDeepLink {
                             uriPattern = "https://backend-petfinder.onrender.com/qr/{token}"
+                        },
+                        navDeepLink {
+                            uriPattern = "https://pet-qr-web.vercel.app/scan/{token}"
+                        },
+                        navDeepLink {
+                            uriPattern = "petfinder://pet/{token}"
                         }
                     )
                 ) { backStackEntry ->

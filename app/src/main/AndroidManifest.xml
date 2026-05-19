@@ -64,6 +64,17 @@
                     android:pathPrefix="/qr/" />
             </intent-filter>
 
+            <!-- Deep link: intercepta https://pet-qr-web.vercel.app/scan/{token} -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="pet-qr-web.vercel.app"
+                    android:pathPrefix="/scan/" />
+            </intent-filter>
+
             <!-- Deep link: callback de Google OAuth — petfinder://auth/callback?accessToken=...  -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -73,6 +84,16 @@
                     android:scheme="petfinder"
                     android:host="auth"
                     android:path="/callback" />
+            </intent-filter>
+
+            <!-- Deep link: botón "Abrir en la app" desde web — petfinder://pet/{token} -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="petfinder"
+                    android:host="pet" />
             </intent-filter>
         </activity>
 

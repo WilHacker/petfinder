@@ -10,6 +10,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.frontend.petfinder.core.network.RetrofitClient
 import com.frontend.petfinder.core.network.SocketManager
@@ -25,6 +26,9 @@ private const val TAG = "MainActivity"
 
 class MainActivity : ComponentActivity() {
 
+    // Referencia al NavController para reenviar App Links cuando la app ya está abierta
+    private var navController: NavHostController? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -33,16 +37,19 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val navController = rememberNavController()
-                    PetFinderNavGraph(navController = navController)
+                    val nc = rememberNavController()
+                    navController = nc
+                    PetFinderNavGraph(navController = nc)
                 }
             }
         }
     }
 
     // Recibe el deep link petfinder://auth/callback?accessToken=...&refreshToken=...
+    // y App Links https://pet-qr-web.vercel.app/scan/{token} cuando la app ya está abierta
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         val uri = intent.data ?: return
         if (uri.scheme == "petfinder" && uri.host == "auth" && uri.path == "/callback") {
             val accessToken = uri.getQueryParameter("accessToken") ?: return
@@ -68,6 +75,9 @@ class MainActivity : ComponentActivity() {
                 }
                 // PetFinderNavGraph detecta isSessionValid = true y navega a Main automáticamente
             }
+        } else {
+            // App Link (QR web) o cualquier otro deep link HTTPS — reenviar al NavController
+            navController?.handleDeepLink(intent)
         }
     }
 
