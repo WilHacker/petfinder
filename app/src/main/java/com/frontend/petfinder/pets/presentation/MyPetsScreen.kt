@@ -25,8 +25,26 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.frontend.petfinder.core.presentation.components.DialogType
+import com.frontend.petfinder.core.presentation.components.PetFinderButton
+import com.frontend.petfinder.core.presentation.components.PetFinderDialog
+import com.frontend.petfinder.core.presentation.components.PetFinderErrorBanner
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.pets.presentation.components.Base64Image
+
+private fun estadoLabel(estado: String): String = when (estado) {
+    "en_casa" -> "En casa"
+    "en_paseo" -> "De paseo"
+    "extraviada" -> "Extraviada"
+    else -> estado.replaceFirstChar { it.uppercase() }
+}
+
+private fun estadoColor(estado: String): Color = when (estado) {
+    "en_casa" -> Color(0xFF4CAF50)
+    "en_paseo" -> PrimaryOrange
+    "extraviada" -> Color(0xFFE53935)
+    else -> Color(0xFF9E9E9E)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,7 +59,6 @@ fun MyPetsScreen(
 
     var showQrDialog by remember { mutableStateOf(false) }
 
-    // ¡EL GATILLO QUE SOLUCIONA TU PROBLEMA!
     LaunchedEffect(Unit) {
         viewModel.loadMyPets()
     }
@@ -51,11 +68,20 @@ fun MyPetsScreen(
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
-                    Text(
-                        "Mis Mascotas",
-                        fontWeight = FontWeight.ExtraBold,
-                        style = MaterialTheme.typography.titleLarge
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            "Mis Mascotas",
+                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        if (pets.isNotEmpty()) {
+                            Text(
+                                text = "${pets.size} ${if (pets.size == 1) "mascota" else "mascotas"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color.Transparent,
@@ -70,6 +96,7 @@ fun MyPetsScreen(
                 contentColor = Color.White,
                 shape = CircleShape,
                 modifier = Modifier
+                    .navigationBarsPadding()
                     .padding(bottom = 80.dp)
                     .shadow(8.dp, CircleShape)
             ) {
@@ -79,129 +106,196 @@ fun MyPetsScreen(
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
 
-            if (isLoading && pets.isEmpty()) { // Solo mostramos cargando si la lista está vacía
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                    color = PrimaryOrange
-                )
-            } else if (pets.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(Icons.Default.Pets, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Aún no has registrado mascotas.", color = Color.Gray)
+            when {
+                isLoading && pets.isEmpty() -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = PrimaryOrange
+                    )
                 }
-            } else {
-                LazyColumn(
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 120.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
-                    items(pets, key = { it.mascotaId }) { pet ->
-                        val imageUrl = pet.fotos?.find { it.esPrincipal }?.fotoUrl ?: pet.fotos?.firstOrNull()?.fotoUrl
 
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(320.dp)
-                                .shadow(12.dp, RoundedCornerShape(32.dp)),
-                            shape = RoundedCornerShape(32.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                if (imageUrl != null) {
-                                    AsyncImage(
-                                        model = imageUrl,
-                                        contentDescription = "Foto de ${pet.nombre}",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else {
+                pets.isEmpty() -> {
+                    // Empty state con CTA
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 32.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Pets,
+                            contentDescription = null,
+                            modifier = Modifier.size(80.dp),
+                            tint = Color(0xFFDDDDDD)
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = "Aún no tienes mascotas",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Registra a tu compañero para generar su placa QR y mantenerlo protegido.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(32.dp))
+                        PetFinderButton(
+                            text = "Registrar mi primera mascota",
+                            onClick = onNavigateToRegisterPet
+                        )
+                    }
+                }
+
+                else -> {
+                    LazyColumn(
+                        contentPadding = PaddingValues(
+                            start = 24.dp, end = 24.dp,
+                            top = 8.dp, bottom = 120.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(20.dp)
+                    ) {
+                        items(pets, key = { it.mascotaId }) { pet ->
+                            val imageUrl = pet.fotos?.find { it.esPrincipal }?.fotoUrl
+                                ?: pet.fotos?.firstOrNull()?.fotoUrl
+                            val status = pet.estado ?: "desconocido"
+                            val isExtraviada = status == "extraviada"
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(300.dp)
+                                    .shadow(
+                                        elevation = if (isExtraviada) 16.dp else 8.dp,
+                                        shape = RoundedCornerShape(28.dp),
+                                        ambientColor = if (isExtraviada) Color(0xFFE53935).copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.08f),
+                                        spotColor = if (isExtraviada) Color(0xFFE53935).copy(alpha = 0.3f) else Color.Black.copy(alpha = 0.12f)
+                                    ),
+                                shape = RoundedCornerShape(28.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White)
+                            ) {
+                                Box(modifier = Modifier.fillMaxSize()) {
+                                    // Foto o placeholder
+                                    if (imageUrl != null) {
+                                        AsyncImage(
+                                            model = imageUrl,
+                                            contentDescription = "Foto de ${pet.nombre}",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Pets,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(64.dp),
+                                                tint = Color(0xFFCCCCCC)
+                                            )
+                                        }
+                                    }
+
+                                    // Degradado inferior
                                     Box(
                                         modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(Icons.Default.Pets, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.Gray)
-                                    }
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(160.dp)
-                                        .align(Alignment.BottomCenter)
-                                        .background(
-                                            Brush.verticalGradient(
-                                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.8f))
+                                            .fillMaxWidth()
+                                            .height(180.dp)
+                                            .align(Alignment.BottomCenter)
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        Color.Transparent,
+                                                        Color.Black.copy(alpha = 0.75f)
+                                                    )
+                                                )
                                             )
-                                        )
-                                )
-
-                                val statusColor = when (pet.estado) {
-                                    "en_casa" -> Color(0xFF4CAF50)
-                                    "en_paseo" -> PrimaryOrange
-                                    "extraviada" -> Color(0xFFE53935)
-                                    else -> Color.Gray
-                                }
-
-                                Surface(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(16.dp),
-                                    shape = RoundedCornerShape(50.dp),
-                                    color = statusColor.copy(alpha = 0.9f)
-                                ) {
-                                    Text(
-                                        text = pet.estado.uppercase().replace("_", " "),
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                     )
-                                }
 
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .align(Alignment.BottomStart)
-                                        .padding(24.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.Bottom
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = pet.nombre,
-                                            style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color.White
-                                        )
-                                        Text(
-                                            text = pet.tipoMascota?.nombre ?: "Mascota",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = Color.White.copy(alpha = 0.8f)
-                                        )
+                                    // Badge de estado — top-end
+                                    Surface(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(14.dp),
+                                        shape = RoundedCornerShape(50.dp),
+                                        color = estadoColor(status).copy(alpha = 0.92f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            if (isExtraviada) {
+                                                Icon(
+                                                    Icons.Default.Warning,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = estadoLabel(status),
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
                                     }
 
-                                    IconButton(
-                                        onClick = {
-                                            viewModel.loadPetQr(pet.mascotaId)
-                                            showQrDialog = true
-                                        },
+                                    // Info + botón QR — bottom
+                                    Row(
                                         modifier = Modifier
-                                            .size(56.dp)
-                                            .background(Color.White, CircleShape)
-                                            .shadow(4.dp, CircleShape)
+                                            .fillMaxWidth()
+                                            .align(Alignment.BottomStart)
+                                            .padding(horizontal = 20.dp, vertical = 18.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.Bottom
                                     ) {
-                                        Icon(
-                                            imageVector = Icons.Default.QrCodeScanner,
-                                            contentDescription = "Ver QR",
-                                            tint = PrimaryOrange,
-                                            modifier = Modifier.size(28.dp)
-                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = pet.nombre,
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Color.White
+                                            )
+                                            Text(
+                                                text = pet.tipoMascota?.nombre ?: "Mascota",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.White.copy(alpha = 0.75f)
+                                            )
+                                        }
+
+                                        // Botón QR
+                                        Box(
+                                            modifier = Modifier
+                                                .size(52.dp)
+                                                .shadow(4.dp, CircleShape)
+                                                .clip(CircleShape)
+                                                .background(Color.White),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            IconButton(
+                                                onClick = {
+                                                    viewModel.loadPetQr(pet.mascotaId)
+                                                    showQrDialog = true
+                                                },
+                                                modifier = Modifier.fillMaxSize()
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.QrCodeScanner,
+                                                    contentDescription = "Ver QR",
+                                                    tint = PrimaryOrange,
+                                                    modifier = Modifier.size(26.dp)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -211,39 +305,44 @@ fun MyPetsScreen(
             }
         }
 
+        // Diálogo QR
         if (showQrDialog) {
-            AlertDialog(
-                onDismissRequest = {
+            PetFinderDialog(
+                type = DialogType.INFO,
+                title = "Placa QR Activa",
+                confirmText = "Cerrar",
+                onConfirm = {
                     showQrDialog = false
                     viewModel.clearSelectedQr()
                 },
-                containerColor = Color.White,
-                shape = RoundedCornerShape(24.dp),
-                title = { Text("Placa QR Activa", fontWeight = FontWeight.ExtraBold) },
-                text = {
+                onDismiss = {
+                    showQrDialog = false
+                    viewModel.clearSelectedQr()
+                },
+                content = {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        if (qrError != null) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Red, modifier = Modifier.size(48.dp))
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(text = qrError!!, color = Color.Red, textAlign = TextAlign.Center)
-                        } else if (selectedQr == null) {
-                            CircularProgressIndicator(color = PrimaryOrange)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text("Generando placa...")
-                        } else {
-                            Base64Image(base64String = selectedQr!!, modifier = Modifier.size(220.dp))
+                        when {
+                            qrError != null -> {
+                                PetFinderErrorBanner(
+                                    message = "No se pudo cargar el código QR. Inténtalo de nuevo."
+                                )
+                            }
+                            selectedQr == null -> {
+                                CircularProgressIndicator(color = PrimaryOrange)
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text(
+                                    "Generando placa...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            else -> {
+                                Base64Image(base64String = selectedQr!!, modifier = Modifier.size(220.dp))
+                            }
                         }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        showQrDialog = false
-                        viewModel.clearSelectedQr()
-                    }) {
-                        Text("Cerrar", color = PrimaryOrange, fontWeight = FontWeight.Bold)
                     }
                 }
             )

@@ -39,7 +39,7 @@ class LoginViewModel : ViewModel() {
 
     fun login(context: Context) {
         if (correo.value.isBlank() || clave.value.isBlank()) {
-            _uiState.value = LoginState.Error("Por favor, ingresa tus credenciales.")
+            _uiState.value = LoginState.Error("Completa el correo y la contraseña para continuar.")
             return
         }
 
@@ -70,13 +70,13 @@ class LoginViewModel : ViewModel() {
                     _uiState.value = LoginState.Success
                 } else {
                     _uiState.value = LoginState.Error(
-                        if (response.code() == 401) "Credenciales incorrectas."
-                        else "Error del servidor (${response.code()})"
+                        if (response.code() == 401) "El correo o la contraseña no son correctos."
+                        else "Algo salió mal en el servidor. Inténtalo en un momento."
                     )
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "login: ${e.message}", e)
-                _uiState.value = LoginState.Error("Error de red. Inténtalo de nuevo.")
+                _uiState.value = LoginState.Error("Sin conexión. Verifica tu internet e intenta de nuevo.")
             }
         }
     }

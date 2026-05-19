@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frontend.petfinder.core.presentation.components.GradientBackground
 import com.frontend.petfinder.core.presentation.components.PetFinderButton
+import com.frontend.petfinder.core.presentation.components.PetFinderErrorBanner
 import com.frontend.petfinder.core.presentation.components.PetFinderTextField
 
 @Composable
@@ -118,9 +119,8 @@ fun RegisterScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             if (uiState is RegisterViewModel.RegisterState.Error) {
-                Text(
-                    text = (uiState as RegisterViewModel.RegisterState.Error).message,
-                    color = MaterialTheme.colorScheme.error,
+                PetFinderErrorBanner(
+                    message = (uiState as RegisterViewModel.RegisterState.Error).message,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
             }

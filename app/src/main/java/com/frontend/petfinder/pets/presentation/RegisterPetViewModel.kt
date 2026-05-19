@@ -56,12 +56,12 @@ class RegisterPetViewModel : ViewModel() {
 
     fun registerPet(context: Context) {
         if (nombre.value.isBlank()) {
-            _uiState.value = RegisterPetState.Error("El nombre es obligatorio.")
+            _uiState.value = RegisterPetState.Error("El nombre de la mascota es obligatorio.")
             return
         }
 
         if (tipoSeleccionado.value == null) {
-            _uiState.value = RegisterPetState.Error("Por favor, selecciona un tipo de mascota.")
+            _uiState.value = RegisterPetState.Error("Selecciona el tipo de mascota para continuar.")
             return
         }
 
@@ -101,10 +101,10 @@ class RegisterPetViewModel : ViewModel() {
                 } else {
                     val errorDelServidor = response.errorBody()?.string() ?: "Error desconocido"
                     println("Rechazo del backend: $errorDelServidor")
-                    _uiState.value = RegisterPetState.Error("Error 400: El servidor rechazó los datos.")
+                    _uiState.value = RegisterPetState.Error("No se pudo guardar la mascota. Verifica los datos e intenta de nuevo.")
                 }
             } catch (e: Exception) {
-                _uiState.value = RegisterPetState.Error("Error de red: ${e.localizedMessage}")
+                _uiState.value = RegisterPetState.Error("Sin conexión. Verifica tu internet e intenta de nuevo.")
             }
         }
     }

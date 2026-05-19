@@ -18,6 +18,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frontend.petfinder.R
 import com.frontend.petfinder.core.presentation.components.GradientBackground
 import com.frontend.petfinder.core.presentation.components.PetFinderButton
+import com.frontend.petfinder.core.presentation.components.PetFinderErrorBanner
 import com.frontend.petfinder.core.presentation.components.PetFinderTextField
 
 @Composable
@@ -129,9 +130,8 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             if (uiState is LoginViewModel.LoginState.Error) {
-                Text(
-                    text = (uiState as LoginViewModel.LoginState.Error).message,
-                    color = MaterialTheme.colorScheme.error,
+                PetFinderErrorBanner(
+                    message = (uiState as LoginViewModel.LoginState.Error).message,
                     modifier = Modifier.padding(bottom = 16.dp)
                 )
             }

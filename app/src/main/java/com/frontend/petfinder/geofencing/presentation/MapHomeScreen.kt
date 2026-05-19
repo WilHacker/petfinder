@@ -6,6 +6,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -25,8 +26,11 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.frontend.petfinder.core.presentation.components.DialogType
+import com.frontend.petfinder.core.presentation.components.PetFinderDialog
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.utils.MapStyle
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
 import com.google.android.gms.maps.model.CameraPosition
@@ -140,7 +144,7 @@ fun MapHomeScreen(
                     mapStyleOptions = MapStyleOptions(MapStyle.json)
                 ),
                 uiSettings = MapUiSettings(
-                    myLocationButtonEnabled = hasLocationPermission,
+                    myLocationButtonEnabled = false,
                     zoomControlsEnabled = false
                 ),
                 onMapClick = { latLng -> mapViewModel.handleMapClick(latLng) }
@@ -273,152 +277,202 @@ fun MapHomeScreen(
                 }
             }
 
-            // --- COMPONENTES DE INTERFAZ ---
-            Row(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Surface(
-                    modifier = Modifier.shadow(8.dp, RoundedCornerShape(50.dp)),
-                    shape = RoundedCornerShape(50.dp),
-                    color = Color.White
+            // --- BARRA SUPERIOR ---
+            // Fila única: [👤 Perfil] ··· [Perdidas] [Admin] ··· [📍 Mi ubicación]
+            if (!isDrawingMode) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Perfil — izquierda
+                    SmallFloatingActionButton(
+                        onClick = onNavigateToProfile,
+                        containerColor = Color.White,
+                        contentColor = PrimaryOrange,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Person, contentDescription = "Mi perfil")
+                    }
+
+                    // Chips centrales — Perdidas + Admin
                     Row(
-                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.FilterList, contentDescription = null, modifier = Modifier.size(18.dp), tint = PrimaryOrange)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text("Filtrar", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                if (isAdmin) {
-                    Surface(
-                        modifier = Modifier.shadow(8.dp, RoundedCornerShape(50.dp)),
-                        shape = RoundedCornerShape(50.dp),
-                        color = Color(0xFF6200EE)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // Chip Perdidas
+                        Surface(
+                            modifier = Modifier
+                                .shadow(6.dp, RoundedCornerShape(50.dp))
+                                .clickable { mapViewModel.toggleLostPetsLayer() },
+                            shape = RoundedCornerShape(50.dp),
+                            color = if (showLostPets) Color(0xFFE53935) else Color.White
                         ) {
-                            Icon(
-                                Icons.Default.AdminPanelSettings,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp),
-                                tint = Color.White
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                "Admin",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = "Mascotas perdidas",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = if (showLostPets) Color.White else Color(0xFFE53935)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Perdidas",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (showLostPets) Color.White else Color(0xFFE53935)
+                                )
+                            }
+                        }
+
+                        // Chip Admin (solo si aplica)
+                        if (isAdmin) {
+                            Surface(
+                                modifier = Modifier.shadow(6.dp, RoundedCornerShape(50.dp)),
+                                shape = RoundedCornerShape(50.dp),
+                                color = Color(0xFF6200EE)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.AdminPanelSettings,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                        tint = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Text(
+                                        "Admin",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
                         }
                     }
-                }
 
-                Surface(
-                    modifier = Modifier
-                        .shadow(8.dp, RoundedCornerShape(50.dp))
-                        .clickable { mapViewModel.toggleLostPetsLayer() },
-                    shape = RoundedCornerShape(50.dp),
-                    color = if (showLostPets) Color(0xFFE53935) else Color.White
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    // Mi ubicación — derecha (reemplaza el botón nativo de Google)
+                    SmallFloatingActionButton(
+                        onClick = {
+                            cameraPositionState.move(
+                                CameraUpdateFactory.newLatLngZoom(LatLng(-17.3895, -66.1568), 14f)
+                            )
+                        },
+                        containerColor = Color.White,
+                        contentColor = PrimaryOrange,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = "Mascotas perdidas",
-                            modifier = Modifier.size(18.dp),
-                            tint = if (showLostPets) Color.White else Color(0xFFE53935)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            "Perdidas",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = if (showLostPets) Color.White else Color(0xFFE53935)
-                        )
+                        Icon(Icons.Default.MyLocation, contentDescription = "Mi ubicación")
                     }
                 }
-            }
 
-            if (!isDrawingMode) {
-                // Botón de perfil — esquina superior izquierda
-                SmallFloatingActionButton(
-                    onClick = onNavigateToProfile,
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .statusBarsPadding()
-                        .padding(top = 8.dp, start = 16.dp),
-                    containerColor = Color.White,
-                    contentColor = PrimaryOrange
-                ) {
-                    Icon(Icons.Default.Person, contentDescription = "Mi perfil")
-                }
-            }
-
-            if (!isDrawingMode) {
+                // FAB Paseo — debajo de la barra superior, lado derecho
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .statusBarsPadding()
-                        .padding(top = 80.dp, end = 16.dp)
+                        .padding(top = 72.dp, end = 12.dp)
                 ) {
                     ExtendedFloatingActionButton(
                         onClick = {
                             if (isTracking) {
                                 mascotaPaseoActivoId?.let { mapViewModel.togglePaseo(context, it) }
                                 mascotaPaseoActivoId = null
-                            } else { showPaseoDialog = true }
+                            } else {
+                                showPaseoDialog = true
+                            }
                         },
                         containerColor = if (isTracking) MaterialTheme.colorScheme.error else PrimaryOrange,
                         contentColor = Color.White,
-                        icon = { Icon(if (isTracking) Icons.Default.Stop else Icons.AutoMirrored.Filled.DirectionsWalk, null) },
-                        text = { Text(if (isTracking) "Detener" else "Paseo") }
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                        icon = {
+                            Icon(
+                                if (isTracking) Icons.Default.Stop else Icons.AutoMirrored.Filled.DirectionsWalk,
+                                contentDescription = null
+                            )
+                        },
+                        text = { Text(if (isTracking) "Detener" else "Paseo", fontWeight = FontWeight.Bold) }
                     )
                 }
             }
 
+            // FABs de dibujo — esquina inferior derecha (solo cuando no está en modo dibujo ni tracking)
             if (!isDrawingMode && !isTracking) {
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(bottom = 16.dp, end = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                        .padding(bottom = 20.dp, end = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     SmallFloatingActionButton(
                         onClick = { mapViewModel.startDrawing("circulo") },
                         containerColor = Color.White,
-                        contentColor = PrimaryOrange
-                    ) { Icon(Icons.Default.AddLocation, contentDescription = "Círculo") }
+                        contentColor = PrimaryOrange,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                    ) {
+                        Icon(Icons.Default.AddLocation, contentDescription = "Dibujar círculo")
+                    }
 
                     SmallFloatingActionButton(
                         onClick = { mapViewModel.startDrawing("poligono") },
                         containerColor = Color.White,
-                        contentColor = PrimaryOrange
-                    ) { Icon(Icons.Default.Polyline, contentDescription = "Polígono") }
+                        contentColor = PrimaryOrange,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Polyline, contentDescription = "Dibujar polígono")
+                    }
                 }
             }
 
             if (isDrawingMode) {
+                // Scrim oscuro sobre el mapa para resaltar los controles
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.30f))
+                )
+
+                // Instrucción de dibujo — centrada en la parte superior
                 Column(
-                    modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 80.dp)
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .statusBarsPadding()
+                        .padding(top = 20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = Color.White.copy(alpha = 0.9f), shadowElevation = 4.dp) {
-                        Text(
-                            text = if (drawingType == "circulo") "Fija el centro en el mapa" else "Agrega los puntos del polígono",
-                            modifier = Modifier.padding(12.dp), fontWeight = FontWeight.Medium
-                        )
+                    Surface(
+                        shape = RoundedCornerShape(50.dp),
+                        color = Color.White,
+                        shadowElevation = 8.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                if (drawingType == "circulo") Icons.Default.AddLocation else Icons.Default.Polyline,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = PrimaryOrange
+                            )
+                            Text(
+                                text = if (drawingType == "circulo") "Toca el mapa para fijar el centro" else "Toca para agregar puntos al polígono",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
 
@@ -463,110 +517,101 @@ fun MapHomeScreen(
             var nombreZona by remember { mutableStateOf("") }
             val selectedPetIds = remember { mutableStateListOf<String>() }
 
-            AlertDialog(
-                onDismissRequest = { showAssignPetsDialog = false },
-                title = { Text("Guardar Zona Segura", fontWeight = FontWeight.Bold) },
-                text = {
+            PetFinderDialog(
+                type = DialogType.DEFAULT,
+                title = "Guardar Zona Segura",
+                confirmText = "Guardar Zona",
+                dismissText = "Cancelar",
+                onConfirm = {
+                    mapViewModel.saveZoneWithMultiplePets(nombreZona, selectedPetIds)
+                    showAssignPetsDialog = false
+                },
+                onDismiss = { showAssignPetsDialog = false },
+                content = {
                     Column {
-                        OutlinedTextField(value = nombreZona, onValueChange = { nombreZona = it }, label = { Text("Nombre (ej. Casa)") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                        OutlinedTextField(
+                            value = nombreZona,
+                            onValueChange = { nombreZona = it },
+                            label = { Text("Nombre (ej. Casa)") },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("Asignar a:", fontWeight = FontWeight.Bold, color = PrimaryOrange)
                         LazyColumn(modifier = Modifier.height(180.dp)) {
                             items(pets) { pet ->
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().clickable {
-                                        if (selectedPetIds.contains(pet.mascotaId)) selectedPetIds.remove(pet.mascotaId) else selectedPetIds.add(pet.mascotaId)
-                                    }.padding(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (selectedPetIds.contains(pet.mascotaId)) selectedPetIds.remove(pet.mascotaId)
+                                            else selectedPetIds.add(pet.mascotaId)
+                                        }
+                                        .padding(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Checkbox(checked = selectedPetIds.contains(pet.mascotaId), onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = PrimaryOrange))
+                                    Checkbox(
+                                        checked = selectedPetIds.contains(pet.mascotaId),
+                                        onCheckedChange = null,
+                                        colors = CheckboxDefaults.colors(checkedColor = PrimaryOrange)
+                                    )
                                     Text(pet.nombre, modifier = Modifier.padding(start = 8.dp))
                                 }
                             }
                         }
                     }
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        mapViewModel.saveZoneWithMultiplePets(nombreZona, selectedPetIds)
-                        showAssignPetsDialog = false
-                    }, enabled = nombreZona.isNotBlank() && selectedPetIds.isNotEmpty()) { Text("Guardar Zona") }
-                },
-                dismissButton = { TextButton(onClick = { showAssignPetsDialog = false }) { Text("Cancelar") } }
+                }
             )
         }
 
         // --- MODAL DE ALERTA DE ZONA (H19) ---
         zoneExitAlert?.let { alert ->
-            AlertDialog(
-                onDismissRequest = { mapViewModel.dismissZoneAlert() },
-                containerColor = MaterialTheme.colorScheme.errorContainer,
-                icon = {
-                    Icon(
-                        Icons.Default.Warning,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(40.dp)
-                    )
-                },
-                title = {
-                    Text(
-                        text = "¡Alerta de zona!",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                },
-                text = {
-                    Text(
-                        text = "${alert.petName} salió de ${alert.zoneName}.\n\nAbre el mapa para ver su ubicación actual.",
-                        color = MaterialTheme.colorScheme.onErrorContainer
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = { mapViewModel.dismissZoneAlert() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error
-                        )
-                    ) { Text("Ver en mapa") }
-                },
-                dismissButton = {
-                    TextButton(onClick = { mapViewModel.dismissZoneAlert() }) {
-                        Text("Cerrar", color = MaterialTheme.colorScheme.onErrorContainer)
-                    }
-                }
+            PetFinderDialog(
+                type = DialogType.DANGER,
+                title = "¡Alerta de zona!",
+                message = "${alert.petName} salió de ${alert.zoneName}. Abre el mapa para ver su ubicación actual.",
+                confirmText = "Ver en mapa",
+                dismissText = "Cerrar",
+                onConfirm = { mapViewModel.dismissZoneAlert() },
+                onDismiss = { mapViewModel.dismissZoneAlert() }
             )
         }
 
         if (showPaseoDialog) {
             var selectedId by remember { mutableStateOf<String?>(null) }
-            AlertDialog(
-                onDismissRequest = { showPaseoDialog = false },
-                title = { Text("¿Quién sale a pasear?", fontWeight = FontWeight.Bold) },
-                text = {
+            PetFinderDialog(
+                type = DialogType.DEFAULT,
+                title = "¿Quién sale a pasear?",
+                confirmText = "Comenzar",
+                dismissText = "Cancelar",
+                onConfirm = {
+                    selectedId?.let {
+                        mascotaPaseoActivoId = it
+                        mapViewModel.togglePaseo(context, it)
+                        showPaseoDialog = false
+                    }
+                },
+                onDismiss = { showPaseoDialog = false },
+                content = {
                     LazyColumn(modifier = Modifier.height(180.dp)) {
                         items(pets) { pet ->
                             Row(
-                                modifier = Modifier.fillMaxWidth().clickable { selectedId = pet.mascotaId }.padding(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { selectedId = pet.mascotaId }
+                                    .padding(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                RadioButton(selected = selectedId == pet.mascotaId, onClick = { selectedId = pet.mascotaId }, colors = RadioButtonDefaults.colors(selectedColor = PrimaryOrange))
+                                RadioButton(
+                                    selected = selectedId == pet.mascotaId,
+                                    onClick = { selectedId = pet.mascotaId },
+                                    colors = RadioButtonDefaults.colors(selectedColor = PrimaryOrange)
+                                )
                                 Text(pet.nombre, modifier = Modifier.padding(start = 8.dp))
                             }
                         }
                     }
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        selectedId?.let {
-                            mascotaPaseoActivoId = it
-                            mapViewModel.togglePaseo(context, it)
-                            showPaseoDialog = false
-                        }
-                    }, enabled = selectedId != null) { Text("Comenzar") }
-                },
-                dismissButton = { TextButton(onClick = { showPaseoDialog = false }) { Text("Cancelar") } }
+                }
             )
         }
     }

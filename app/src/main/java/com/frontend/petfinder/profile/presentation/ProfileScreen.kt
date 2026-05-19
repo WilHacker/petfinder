@@ -29,6 +29,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.frontend.petfinder.core.presentation.components.DialogType
+import com.frontend.petfinder.core.presentation.components.PetFinderDialog
+import com.frontend.petfinder.core.presentation.components.PetFinderErrorBanner
 import com.frontend.petfinder.core.theme.PrimaryOrange
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -102,8 +105,11 @@ fun ProfileScreen(
                     modifier = Modifier.fillMaxSize().padding(padding),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(state.message, color = MaterialTheme.colorScheme.error)
+                    Column(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        PetFinderErrorBanner(message = state.message)
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(onClick = { viewModel.loadProfile() }) { Text("Reintentar") }
                     }
@@ -288,23 +294,14 @@ fun ProfileScreen(
                     }
 
                     if (showLogoutDialog) {
-                        AlertDialog(
-                            onDismissRequest = { showLogoutDialog = false },
-                            title = { Text("¿Cerrar sesión?") },
-                            text = { Text("Se eliminará tu sesión de este dispositivo.") },
-                            confirmButton = {
-                                Button(
-                                    onClick = { viewModel.logout() },
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.error
-                                    )
-                                ) { Text("Cerrar sesión") }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showLogoutDialog = false }) {
-                                    Text("Cancelar")
-                                }
-                            }
+                        PetFinderDialog(
+                            type = DialogType.DANGER,
+                            title = "¿Cerrar sesión?",
+                            message = "Se eliminará tu sesión de este dispositivo.",
+                            confirmText = "Cerrar sesión",
+                            dismissText = "Cancelar",
+                            onConfirm = { viewModel.logout() },
+                            onDismiss = { showLogoutDialog = false }
                         )
                     }
 
