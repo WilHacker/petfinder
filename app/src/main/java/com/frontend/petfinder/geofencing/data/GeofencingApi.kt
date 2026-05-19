@@ -5,6 +5,7 @@ import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.HTTP
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -106,6 +107,11 @@ data class ZoneWithPetsDto(
     @SerializedName("mascotas") val mascotas: List<ZonePetDetailDto>? = emptyList()
 )
 
+// Body para POST/DELETE /geofencing/zones/{id}/pets
+data class ZonePetsRequest(
+    @SerializedName("mascotaIds") val mascotaIds: List<String>
+)
+
 // --- DTOs PARA ENVIAR Y ACTUALIZAR DATOS ---
 
 // DTO para ENVIAR una nueva zona al servidor
@@ -173,7 +179,28 @@ interface GeofencingApi {
     @GET("geofencing/zones/{id}")
     suspend fun getZoneDetail(
         @Path("id") zonaId: Int
-    ): Response<ZoneDto>
+    ): Response<ZoneWithPetsDto>
+
+    // Agregar mascotas a una zona
+    @POST("geofencing/zones/{id}/pets")
+    suspend fun addPetsToZone(
+        @Path("id") zonaId: Int,
+        @Body request: ZonePetsRequest
+    ): Response<ZoneWithPetsDto>
+
+    // Reemplazar lista completa de mascotas en una zona
+    @PUT("geofencing/zones/{id}/pets")
+    suspend fun replacePetsInZone(
+        @Path("id") zonaId: Int,
+        @Body request: ZonePetsRequest
+    ): Response<ZoneWithPetsDto>
+
+    // Quitar mascotas de una zona (DELETE con body requiere @HTTP)
+    @HTTP(method = "DELETE", path = "geofencing/zones/{id}/pets", hasBody = true)
+    suspend fun removePetsFromZone(
+        @Path("id") zonaId: Int,
+        @Body request: ZonePetsRequest
+    ): Response<Map<String, String>>
 
     // Actualizar una zona (renombrar, cambiar radio, editar vértices, encender/apagar)
     @PUT("geofencing/zones/{id}")

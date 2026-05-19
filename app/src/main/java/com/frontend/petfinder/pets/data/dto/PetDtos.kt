@@ -77,6 +77,21 @@ data class FotoPublicaDto(
     @SerializedName("esPrincipal") val esPrincipal: Boolean
 )
 
+data class FichaMedicaPublicaDto(
+    @SerializedName("vacunado") val vacunado: Boolean? = null,
+    @SerializedName("esterilizado") val esterilizado: Boolean? = null,
+    @SerializedName("condicionEspecial") val condicionEspecial: String? = null,
+    @SerializedName("alergia") val alergia: String? = null
+)
+
+data class RegistroMedicoPublicoDto(
+    @SerializedName("registroId") val registroId: Int? = null,
+    @SerializedName("tipo") val tipo: String,
+    @SerializedName("descripcion") val descripcion: String? = null,
+    @SerializedName("fecha") val fecha: String? = null,
+    @SerializedName("veterinario") val veterinario: String? = null
+)
+
 data class PublicPetCardDto(
     @SerializedName("mascotaId") val mascotaId: String,
     @SerializedName("nombre") val nombre: String,
@@ -87,8 +102,8 @@ data class PublicPetCardDto(
     @SerializedName("estado") val estado: String,
     @SerializedName("estaExtraviada") val estaExtraviada: Boolean,
     @SerializedName("fotos") val fotos: List<FotoPublicaDto>?,
-    @SerializedName("fichaMedica") val fichaMedica: Any?,
-    @SerializedName("registrosMedicos") val registrosMedicos: List<Any>?,
+    @SerializedName("fichaMedica") val fichaMedica: FichaMedicaPublicaDto?,
+    @SerializedName("registrosMedicos") val registrosMedicos: List<RegistroMedicoPublicoDto>?,
     @SerializedName("propietarios") val propietarios: List<PropietarioPublicoDto>
 )
 
@@ -159,4 +174,85 @@ data class AddOwnerRequest(
 data class QrScanRequest(
     @SerializedName("lat") val lat: Double?,
     @SerializedName("lng") val lng: Double?
+)
+
+// =============================================================================
+// DTOs de respuesta — Detalle completo de mascota (GET /pets/{id})
+// =============================================================================
+
+data class MedioContactoDetailDto(
+    @SerializedName("tipo") val tipo: String,
+    @SerializedName("valor") val valor: String,
+    @SerializedName("esPrincipal") val esPrincipal: Boolean = false
+)
+
+data class PersonaDetailDto(
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("apellidoPaterno") val apellidoPaterno: String,
+    @SerializedName("fotoPerfilUrl") val fotoPerfilUrl: String?,
+    @SerializedName("mediosContacto") val mediosContacto: List<MedioContactoDetailDto> = emptyList()
+)
+
+data class PropietarioDetailDto(
+    @SerializedName("personaId") val personaId: String,
+    @SerializedName("tipoRelacion") val tipoRelacion: String,
+    @SerializedName("recibeAlertas") val recibeAlertas: Boolean,
+    @SerializedName("mostrarEnQr") val mostrarEnQr: Boolean,
+    @SerializedName("persona") val persona: PersonaDetailDto
+)
+
+data class PlacaQrDetailDto(
+    @SerializedName("placaId") val placaId: String,
+    @SerializedName("tokenAcceso") val tokenAcceso: String,
+    @SerializedName("estaActiva") val estaActiva: Boolean
+)
+
+data class UbicacionDto(
+    @SerializedName("lat") val lat: Double,
+    @SerializedName("lng") val lng: Double
+)
+
+data class PetDetailDto(
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("tipoId") val tipoId: Int?,
+    @SerializedName("sexo") val sexo: String?,
+    @SerializedName("colorPrimario") val colorPrimario: String?,
+    @SerializedName("rasgosParticulares") val rasgosParticulares: String?,
+    @SerializedName("estado") val estado: String,
+    @SerializedName("fechaUltimaUbicacion") val fechaUltimaUbicacion: String?,
+    @SerializedName("creadoEl") val creadoEl: String,
+    @SerializedName("tipoMascota") val tipoMascota: TipoMascotaRefDto?,
+    @SerializedName("placaQr") val placaQr: PlacaQrDetailDto?,
+    @SerializedName("fotos") val fotos: List<FotoMascotaDto>?,
+    @SerializedName("propietarios") val propietarios: List<PropietarioDetailDto> = emptyList(),
+    @SerializedName("ubicacion") val ubicacion: UbicacionDto?
+)
+
+// =============================================================================
+// DTOs — Historial médico (GET/POST/PUT /pets/{id}/medical)
+// =============================================================================
+
+data class MedicalRecordDto(
+    @SerializedName("registroId") val registroId: Int,
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("tipo") val tipo: String,
+    @SerializedName("descripcion") val descripcion: String?,
+    @SerializedName("fecha") val fecha: String?,
+    @SerializedName("veterinario") val veterinario: String?,
+    @SerializedName("creadoEl") val creadoEl: String
+)
+
+data class CreateMedicalRecordRequest(
+    @SerializedName("tipo") val tipo: String,
+    @SerializedName("descripcion") val descripcion: String? = null,
+    @SerializedName("fecha") val fecha: String? = null,
+    @SerializedName("veterinario") val veterinario: String? = null
+)
+
+data class UpdateMedicalRecordRequest(
+    @SerializedName("tipo") val tipo: String? = null,
+    @SerializedName("descripcion") val descripcion: String? = null,
+    @SerializedName("fecha") val fecha: String? = null,
+    @SerializedName("veterinario") val veterinario: String? = null
 )

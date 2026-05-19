@@ -15,6 +15,9 @@ import androidx.navigation.navDeepLink
 import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.auth.presentation.LoginScreen
 import com.frontend.petfinder.auth.presentation.RegisterScreen
+import com.frontend.petfinder.geofencing.presentation.ZoneDetailScreen
+import com.frontend.petfinder.pets.presentation.MedicalHistoryScreen
+import com.frontend.petfinder.pets.presentation.PetDetailScreen
 import com.frontend.petfinder.pets.presentation.PetPublicCardScreen
 import com.frontend.petfinder.pets.presentation.RegisterPetScreen
 import com.frontend.petfinder.profile.presentation.ProfileScreen
@@ -93,6 +96,57 @@ fun PetFinderNavGraph(navController: NavHostController) {
 
                 composable(NavRoutes.Profile.route) {
                     ProfileScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(
+                    route = NavRoutes.PetDetail.route,
+                    arguments = listOf(
+                        navArgument(NavRoutes.PetDetail.ARG_PET_ID) {
+                            type = NavType.StringType
+                        }
+                    )
+                ) { backStackEntry ->
+                    val mascotaId = backStackEntry.arguments
+                        ?.getString(NavRoutes.PetDetail.ARG_PET_ID) ?: ""
+                    PetDetailScreen(
+                        mascotaId = mascotaId,
+                        onNavigateBack = { navController.popBackStack() },
+                        onNavigateToMedical = {
+                            navController.navigate(NavRoutes.MedicalHistory.createRoute(mascotaId))
+                        }
+                    )
+                }
+
+                composable(
+                    route = NavRoutes.MedicalHistory.route,
+                    arguments = listOf(
+                        navArgument(NavRoutes.MedicalHistory.ARG_PET_ID) {
+                            type = NavType.StringType
+                        }
+                    )
+                ) { backStackEntry ->
+                    val mascotaId = backStackEntry.arguments
+                        ?.getString(NavRoutes.MedicalHistory.ARG_PET_ID) ?: ""
+                    MedicalHistoryScreen(
+                        mascotaId = mascotaId,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(
+                    route = NavRoutes.ZoneDetail.route,
+                    arguments = listOf(
+                        navArgument(NavRoutes.ZoneDetail.ARG_ZONE_ID) {
+                            type = NavType.IntType
+                        }
+                    )
+                ) { backStackEntry ->
+                    val zonaId = backStackEntry.arguments
+                        ?.getInt(NavRoutes.ZoneDetail.ARG_ZONE_ID) ?: 0
+                    ZoneDetailScreen(
+                        zonaId = zonaId,
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }

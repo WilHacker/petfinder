@@ -75,7 +75,10 @@ fun MainScreen(rootNavController: NavHostController) {
                 }
                 composable(NavRoutes.MyPets.route) {
                     MyPetsScreen(
-                        onNavigateToRegisterPet = { rootNavController.navigate(NavRoutes.RegisterPet.route) }
+                        onNavigateToRegisterPet = { rootNavController.navigate(NavRoutes.RegisterPet.route) },
+                        onNavigateToPetDetail = { mascotaId ->
+                            rootNavController.navigate(NavRoutes.PetDetail.createRoute(mascotaId))
+                        }
                     )
                 }
                 composable(NavRoutes.MyZones.route) {
@@ -86,6 +89,9 @@ fun MainScreen(rootNavController: NavHostController) {
                                 popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
                                 launchSingleTop = true
                             }
+                        },
+                        onNavigateToZoneDetail = { zonaId ->
+                            rootNavController.navigate(NavRoutes.ZoneDetail.createRoute(zonaId))
                         }
                     )
                 }

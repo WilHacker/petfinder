@@ -1,6 +1,7 @@
 package com.frontend.petfinder.pets.presentation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -50,7 +51,8 @@ private fun estadoColor(estado: String): Color = when (estado) {
 @Composable
 fun MyPetsScreen(
     viewModel: MyPetsViewModel = viewModel(),
-    onNavigateToRegisterPet: () -> Unit
+    onNavigateToRegisterPet: () -> Unit,
+    onNavigateToPetDetail: (String) -> Unit = {}
 ) {
     val pets by viewModel.pets.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
@@ -169,6 +171,7 @@ fun MyPetsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(300.dp)
+                                    .clickable { onNavigateToPetDetail(pet.mascotaId) }
                                     .shadow(
                                         elevation = if (isExtraviada) 16.dp else 8.dp,
                                         shape = RoundedCornerShape(28.dp),

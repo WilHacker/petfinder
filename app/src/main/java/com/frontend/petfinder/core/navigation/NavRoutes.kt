@@ -20,4 +20,22 @@ sealed class NavRoutes(val route: String) {
 
     // Perfil del usuario autenticado
     object Profile : NavRoutes("profile")
+
+    // Detalle de mascota
+    object PetDetail : NavRoutes("pet_detail/{mascotaId}") {
+        fun createRoute(mascotaId: String) = "pet_detail/$mascotaId"
+        const val ARG_PET_ID = "mascotaId"
+    }
+
+    // Historial médico de una mascota
+    object MedicalHistory : NavRoutes("medical/{mascotaId}") {
+        fun createRoute(mascotaId: String) = "medical/$mascotaId"
+        const val ARG_PET_ID = "mascotaId"
+    }
+
+    // Detalle de zona segura
+    object ZoneDetail : NavRoutes("zone_detail/{zonaId}") {
+        fun createRoute(zonaId: Int) = "zone_detail/$zonaId"
+        const val ARG_ZONE_ID = "zonaId"
+    }
 }

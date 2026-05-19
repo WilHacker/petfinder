@@ -32,7 +32,7 @@ interface PetApi {
     suspend fun getMyPets(): Response<List<PetListItemDto>>
 
     @GET("pets/{id}")
-    suspend fun getPetDetail(@Path("id") petId: String): Response<PetListItemDto>
+    suspend fun getPetDetail(@Path("id") petId: String): Response<PetDetailDto>
 
     @PUT("pets/{id}")
     suspend fun updatePet(
@@ -101,11 +101,35 @@ interface PetApi {
         @Path("personaId") personaId: String
     ): Response<Map<String, String>>
 
-    // --- Historial (Sprint 2) ---
+    // --- Historial QR y reportes ---
 
     @GET("pets/{id}/scans")
     suspend fun getPetScans(@Path("id") petId: String): Response<List<PetScanDto>>
 
     @GET("pets/{id}/reports")
     suspend fun getPetReports(@Path("id") petId: String): Response<List<PetReportDto>>
+
+    // --- Historial médico ---
+
+    @GET("pets/{id}/medical")
+    suspend fun getMedicalRecords(@Path("id") petId: String): Response<List<MedicalRecordDto>>
+
+    @POST("pets/{id}/medical")
+    suspend fun createMedicalRecord(
+        @Path("id") petId: String,
+        @Body request: CreateMedicalRecordRequest
+    ): Response<MedicalRecordDto>
+
+    @PUT("pets/{id}/medical/{registroId}")
+    suspend fun updateMedicalRecord(
+        @Path("id") petId: String,
+        @Path("registroId") registroId: Int,
+        @Body request: UpdateMedicalRecordRequest
+    ): Response<MedicalRecordDto>
+
+    @DELETE("pets/{id}/medical/{registroId}")
+    suspend fun deleteMedicalRecord(
+        @Path("id") petId: String,
+        @Path("registroId") registroId: Int
+    ): Response<Map<String, String>>
 }

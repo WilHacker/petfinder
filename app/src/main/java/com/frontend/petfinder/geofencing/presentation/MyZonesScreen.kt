@@ -1,6 +1,7 @@
 package com.frontend.petfinder.geofencing.presentation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -32,7 +33,8 @@ import com.frontend.petfinder.core.theme.PrimaryOrangeLight
 @Composable
 fun MyZonesScreen(
     viewModel: MapViewModel,
-    onNavigateToMap: () -> Unit
+    onNavigateToMap: () -> Unit,
+    onNavigateToZoneDetail: (Int) -> Unit = {}
 ) {
     val zones by viewModel.userZones.collectAsState()
     val isLoading by viewModel.isZonesLoading.collectAsState()
@@ -140,7 +142,8 @@ fun MyZonesScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .shadow(if (isActive) 6.dp else 2.dp, RoundedCornerShape(20.dp))
-                                    .alpha(if (isActive) 1f else 0.6f),
+                                    .alpha(if (isActive) 1f else 0.6f)
+                                    .clickable { onNavigateToZoneDetail(zone.zonaId) },
                                 shape = RoundedCornerShape(20.dp),
                                 colors = CardDefaults.cardColors(containerColor = Color.White)
                             ) {
