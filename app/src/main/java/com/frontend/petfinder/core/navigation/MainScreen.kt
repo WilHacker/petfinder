@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.ShareLocation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -23,6 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.TextGray
 import com.frontend.petfinder.geofencing.presentation.MapHomeScreen
@@ -36,6 +38,9 @@ fun MainScreen(rootNavController: NavHostController) {
 
     // CEREBRO COMPARTIDO: Ambas pestañas verán exactamente los mismos datos
     val sharedMapViewModel: MapViewModel = viewModel()
+
+    val rol by PetFinderApp.sessionManager.getUserRole().collectAsState(initial = null)
+    val isAdmin = rol == "admin"
 
     Scaffold(
         bottomBar = {
@@ -62,7 +67,11 @@ fun MainScreen(rootNavController: NavHostController) {
                 modifier = Modifier.padding(paddingValues)
             ) {
                 composable(NavRoutes.MapHome.route) {
-                    MapHomeScreen(mapViewModel = sharedMapViewModel)
+                    MapHomeScreen(
+                        mapViewModel = sharedMapViewModel,
+                        onNavigateToProfile = { rootNavController.navigate(NavRoutes.Profile.route) },
+                        isAdmin = isAdmin
+                    )
                 }
                 composable(NavRoutes.MyPets.route) {
                     MyPetsScreen(

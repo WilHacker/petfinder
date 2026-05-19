@@ -1,7 +1,9 @@
 package com.frontend.petfinder.auth.presentation
 
 import android.content.Context
+import android.net.Uri
 import android.util.Log
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.petfinder.PetFinderApp
@@ -77,6 +79,14 @@ class LoginViewModel : ViewModel() {
                 _uiState.value = LoginState.Error("Error de red. Inténtalo de nuevo.")
             }
         }
+    }
+
+    fun loginWithGoogle(context: Context) {
+        val googleAuthUrl = "https://backend-petfinder.onrender.com/auth/google"
+        CustomTabsIntent.Builder()
+            .setShowTitle(true)
+            .build()
+            .launchUrl(context, Uri.parse(googleAuthUrl))
     }
 
     private suspend fun registrarFcmToken() {

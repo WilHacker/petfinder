@@ -53,6 +53,16 @@ data class MarkersDto(
     val desaparecidas: List<PetMarkerDto>
 )
 
+data class LostPetMarkerDto(
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("tipo") val tipo: String,
+    @SerializedName("fotoUrl") val fotoUrl: String?,
+    @SerializedName("lat") val lat: Double,
+    @SerializedName("lng") val lng: Double,
+    @SerializedName("fechaPerdida") val fechaPerdida: String?
+)
+
 data class MapSnapshotResponse(
     val marcadores: MarkersDto,
     val zonas: List<ZoneDto>
@@ -134,6 +144,9 @@ interface GeofencingApi {
     // -------------------------------------------------------------------------
     @GET("map/snapshot")
     suspend fun getMapSnapshot(): Response<MapSnapshotResponse>
+
+    @GET("map/public/lost-pets")
+    suspend fun getPublicLostPets(): Response<List<LostPetMarkerDto>>
 
     // -------------------------------------------------------------------------
     // 2. GESTIÓN DE GEOVALLAS (Zonas Seguras)

@@ -66,6 +66,32 @@ class MapViewModel : ViewModel() {
     private val _isZonesLoading = MutableStateFlow(false)
     val isZonesLoading: StateFlow<Boolean> = _isZonesLoading.asStateFlow()
 
+    // --- Mascotas perdidas públicas (H13) ---
+    private val _lostPets = MutableStateFlow<List<com.frontend.petfinder.geofencing.data.LostPetMarkerDto>>(emptyList())
+    val lostPets: StateFlow<List<com.frontend.petfinder.geofencing.data.LostPetMarkerDto>> = _lostPets.asStateFlow()
+
+    private val _showLostPets = MutableStateFlow(true)
+    val showLostPets: StateFlow<Boolean> = _showLostPets.asStateFlow()
+
+    fun toggleLostPetsLayer() {
+        _showLostPets.value = !_showLostPets.value
+    }
+
+    // --- Alerta de zona (H19) ---
+    private val _zoneExitAlert = MutableStateFlow<ZoneExitAlertUi?>(null)
+    val zoneExitAlert: StateFlow<ZoneExitAlertUi?> = _zoneExitAlert.asStateFlow()
+
+    data class ZoneExitAlertUi(
+        val mascotaId: String,
+        val zonaId: Int,
+        val petName: String,
+        val zoneName: String
+    )
+
+    fun dismissZoneAlert() {
+        _zoneExitAlert.value = null
+    }
+
     // --- Tracking y errores ---
     val isTracking: StateFlow<Boolean> = TrackingManager.isTracking
 
@@ -90,6 +116,26 @@ class MapViewModel : ViewModel() {
                 _liveOwnerLocations.update { it + (update.personaId to LatLng(update.lat, update.lng)) }
             }
         }
+        viewModelScope.launch {
+            SocketManager.zoneExitFlow.collect { event ->
+                val petName = _pets.value.find { it.mascotaId == event.mascotaId }?.nombre
+                    ?: _snapshot.value?.zonas
+                        ?.flatMap { it.mascotas ?: emptyList() }
+                        ?.find { it.mascotaId == event.mascotaId }?.nombre
+                    ?: "Tu mascota"
+                val zoneName = _snapshot.value?.zonas
+                    ?.find { it.zonaId == event.zonaId }
+                    ?.let { it.nombre ?: it.nombreZona }
+                    ?: _userZones.value.find { it.zonaId == event.zonaId }?.nombreZona
+                    ?: "la zona segura"
+                _zoneExitAlert.value = ZoneExitAlertUi(
+                    mascotaId = event.mascotaId,
+                    zonaId = event.zonaId,
+                    petName = petName,
+                    zoneName = zoneName
+                )
+            }
+        }
     }
 
     // --- Carga de datos ---
@@ -104,6 +150,10 @@ class MapViewModel : ViewModel() {
                 val petRes = petApi.getMyPets()
                 if (petRes.isSuccessful) _pets.value = petRes.body() ?: emptyList()
                 else Log.w(TAG, "getMyPets error ${petRes.code()}")
+
+                val lostRes = geoApi.getPublicLostPets()
+                if (lostRes.isSuccessful) _lostPets.value = lostRes.body() ?: emptyList()
+                else Log.w(TAG, "getPublicLostPets error ${lostRes.code()}")
             } catch (e: Exception) {
                 Log.e(TAG, "cargarDatosDelMapa: ${e.message}", e)
             }

@@ -95,4 +95,7 @@ dependencies {
     // Firebase Cloud Messaging (push notifications)
     implementation(platform("com.google.firebase:firebase-bom:33.1.0"))
     implementation("com.google.firebase:firebase-messaging-ktx")
+
+    // Chrome Custom Tab para flujo OAuth de Google Sign-In
+    implementation("androidx.browser:browser:1.8.0")
 }

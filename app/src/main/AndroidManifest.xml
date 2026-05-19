@@ -46,10 +46,33 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Petfinder">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Deep link: intercepta https://backend-petfinder.onrender.com/qr/{token} -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="backend-petfinder.onrender.com"
+                    android:pathPrefix="/qr/" />
+            </intent-filter>
+
+            <!-- Deep link: callback de Google OAuth — petfinder://auth/callback?accessToken=...  -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="petfinder"
+                    android:host="auth"
+                    android:path="/callback" />
             </intent-filter>
         </activity>
 

@@ -79,7 +79,9 @@ fun rememberCustomMarkerIcon(context: Context, url: String?, borderColor: Color)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MapHomeScreen(
-    mapViewModel: MapViewModel
+    mapViewModel: MapViewModel,
+    onNavigateToProfile: () -> Unit = {},
+    isAdmin: Boolean = false
 ) {
     val context = LocalContext.current
 
@@ -95,6 +97,9 @@ fun MapHomeScreen(
     val livePetLocations by mapViewModel.livePetLocations.collectAsState()
     val liveOwnerLocations by mapViewModel.liveOwnerLocations.collectAsState()
     val trackingError by mapViewModel.trackingError.collectAsState()
+    val lostPets by mapViewModel.lostPets.collectAsState()
+    val showLostPets by mapViewModel.showLostPets.collectAsState()
+    val zoneExitAlert by mapViewModel.zoneExitAlert.collectAsState()
 
     var hasLocationPermission by remember { mutableStateOf(false) }
     var showAssignPetsDialog by remember { mutableStateOf(false) }
@@ -233,7 +238,23 @@ fun MapHomeScreen(
                     }
                 }
 
-                // 4. DIBUJO TEMPORAL
+                // 4. MASCOTAS PERDIDAS PÚBLICAS (H13)
+                if (showLostPets) {
+                    lostPets.forEach { lost ->
+                        key("lost_${lost.mascotaId}") {
+                            val pos = LatLng(lost.lat, lost.lng)
+                            val customIcon = rememberCustomMarkerIcon(context, lost.fotoUrl, Color(0xFFE53935))
+                            Marker(
+                                state = MarkerState(position = pos),
+                                title = lost.nombre,
+                                snippet = "Extraviada · ${lost.tipo}",
+                                icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
+                            )
+                        }
+                    }
+                }
+
+                // 5. DIBUJO TEMPORAL
                 if (isDrawingMode) {
                     if (drawingType == "circulo" && tempCircleCenter != null) {
                         Circle(
@@ -253,16 +274,15 @@ fun MapHomeScreen(
             }
 
             // --- COMPONENTES DE INTERFAZ ---
-            Column(
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .statusBarsPadding()
-                    .padding(top = 16.dp)
+                    .padding(top = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Surface(
-                    modifier = Modifier
-                        .shadow(8.dp, RoundedCornerShape(50.dp))
-                        .clickable { /* Lógica de filtrado */ },
+                    modifier = Modifier.shadow(8.dp, RoundedCornerShape(50.dp)),
                     shape = RoundedCornerShape(50.dp),
                     color = Color.White
                 ) {
@@ -274,6 +294,75 @@ fun MapHomeScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Text("Filtrar", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                     }
+                }
+
+                if (isAdmin) {
+                    Surface(
+                        modifier = Modifier.shadow(8.dp, RoundedCornerShape(50.dp)),
+                        shape = RoundedCornerShape(50.dp),
+                        color = Color(0xFF6200EE)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.AdminPanelSettings,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                                tint = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Admin",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .shadow(8.dp, RoundedCornerShape(50.dp))
+                        .clickable { mapViewModel.toggleLostPetsLayer() },
+                    shape = RoundedCornerShape(50.dp),
+                    color = if (showLostPets) Color(0xFFE53935) else Color.White
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = "Mascotas perdidas",
+                            modifier = Modifier.size(18.dp),
+                            tint = if (showLostPets) Color.White else Color(0xFFE53935)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            "Perdidas",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (showLostPets) Color.White else Color(0xFFE53935)
+                        )
+                    }
+                }
+            }
+
+            if (!isDrawingMode) {
+                // Botón de perfil — esquina superior izquierda
+                SmallFloatingActionButton(
+                    onClick = onNavigateToProfile,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .statusBarsPadding()
+                        .padding(top = 8.dp, start = 16.dp),
+                    containerColor = Color.White,
+                    contentColor = PrimaryOrange
+                ) {
+                    Icon(Icons.Default.Person, contentDescription = "Mi perfil")
                 }
             }
 
@@ -404,6 +493,49 @@ fun MapHomeScreen(
                     }, enabled = nombreZona.isNotBlank() && selectedPetIds.isNotEmpty()) { Text("Guardar Zona") }
                 },
                 dismissButton = { TextButton(onClick = { showAssignPetsDialog = false }) { Text("Cancelar") } }
+            )
+        }
+
+        // --- MODAL DE ALERTA DE ZONA (H19) ---
+        zoneExitAlert?.let { alert ->
+            AlertDialog(
+                onDismissRequest = { mapViewModel.dismissZoneAlert() },
+                containerColor = MaterialTheme.colorScheme.errorContainer,
+                icon = {
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(40.dp)
+                    )
+                },
+                title = {
+                    Text(
+                        text = "¡Alerta de zona!",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                },
+                text = {
+                    Text(
+                        text = "${alert.petName} salió de ${alert.zoneName}.\n\nAbre el mapa para ver su ubicación actual.",
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { mapViewModel.dismissZoneAlert() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) { Text("Ver en mapa") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { mapViewModel.dismissZoneAlert() }) {
+                        Text("Cerrar", color = MaterialTheme.colorScheme.onErrorContainer)
+                    }
+                }
             )
         }
 

@@ -48,8 +48,14 @@ interface PetApi {
     @GET("pets/{id}/qr")
     suspend fun getPetQrCode(@Path("id") petId: String): Response<ResponseBody>
 
-    @GET("pets/{id}/card")
-    suspend fun getPublicPetCard(@Path("id") petId: String): Response<PublicPetCardDto>
+    @GET("qr/{token}")
+    suspend fun getPublicPetCard(@Path("token") token: String): Response<PublicPetCardDto>
+
+    @POST("qr/{token}/scan")
+    suspend fun registerQrScan(
+        @Path("token") token: String,
+        @Body request: QrScanRequest
+    ): Response<PetScanDto>
 
     // --- Estado y ubicación ---
 

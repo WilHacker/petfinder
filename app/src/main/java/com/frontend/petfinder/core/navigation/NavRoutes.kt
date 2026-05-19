@@ -11,4 +11,13 @@ sealed class NavRoutes(val route: String) {
     object MapHome : NavRoutes("map_home")
     object MyPets : NavRoutes("my_pets")
     object MyZones : NavRoutes("my_zones")
+
+    // QR público — accesible sin sesión via deep link
+    object QrPublicCard : NavRoutes("qr/{token}") {
+        fun createRoute(token: String) = "qr/$token"
+        const val ARG_TOKEN = "token"
+    }
+
+    // Perfil del usuario autenticado
+    object Profile : NavRoutes("profile")
 }

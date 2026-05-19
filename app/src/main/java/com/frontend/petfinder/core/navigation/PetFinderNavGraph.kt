@@ -7,12 +7,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.auth.presentation.LoginScreen
 import com.frontend.petfinder.auth.presentation.RegisterScreen
+import com.frontend.petfinder.pets.presentation.PetPublicCardScreen
 import com.frontend.petfinder.pets.presentation.RegisterPetScreen
+import com.frontend.petfinder.profile.presentation.ProfileScreen
 
 @Composable
 fun PetFinderNavGraph(navController: NavHostController) {
@@ -32,6 +37,16 @@ fun PetFinderNavGraph(navController: NavHostController) {
                 NavRoutes.Main.route
             } else {
                 NavRoutes.Login.route
+            }
+
+            // Maneja cambios de sesión en caliente (Google Sign-In callback mientras Login está activo)
+            LaunchedEffect(isSessionValid) {
+                if (isSessionValid == true &&
+                    navController.currentDestination?.route == NavRoutes.Login.route) {
+                    navController.navigate(NavRoutes.Main.route) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
             }
 
             NavHost(
@@ -60,7 +75,6 @@ fun PetFinderNavGraph(navController: NavHostController) {
                 }
 
                 composable(NavRoutes.Main.route) {
-                    // Forced logout: if session becomes invalid while in Main, kick back to Login
                     LaunchedEffect(isSessionValid) {
                         if (isSessionValid == false) {
                             navController.navigate(NavRoutes.Login.route) {
@@ -73,6 +87,34 @@ fun PetFinderNavGraph(navController: NavHostController) {
 
                 composable(NavRoutes.RegisterPet.route) {
                     RegisterPetScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                composable(NavRoutes.Profile.route) {
+                    ProfileScreen(
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                // Ficha pública del QR — accesible sin sesión, también vía deep link
+                composable(
+                    route = NavRoutes.QrPublicCard.route,
+                    arguments = listOf(
+                        navArgument(NavRoutes.QrPublicCard.ARG_TOKEN) {
+                            type = NavType.StringType
+                        }
+                    ),
+                    deepLinks = listOf(
+                        navDeepLink {
+                            uriPattern = "https://backend-petfinder.onrender.com/qr/{token}"
+                        }
+                    )
+                ) { backStackEntry ->
+                    val token = backStackEntry.arguments
+                        ?.getString(NavRoutes.QrPublicCard.ARG_TOKEN) ?: ""
+                    PetPublicCardScreen(
+                        token = token,
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }

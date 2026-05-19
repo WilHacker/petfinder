@@ -23,6 +23,10 @@ object SocketManager {
     private val _ownerLocationFlow = MutableSharedFlow<OwnerLocationUpdate>(extraBufferCapacity = 1)
     val ownerLocationFlow = _ownerLocationFlow.asSharedFlow()
 
+    // Alerta de zona — modal in-app (H19)
+    private val _zoneExitFlow = MutableSharedFlow<ZoneAlertEvent>(extraBufferCapacity = 1)
+    val zoneExitFlow = _zoneExitFlow.asSharedFlow()
+
     fun connect(jwtToken: String, context: Context) {
         if (socket?.connected() == true) return
 
@@ -63,6 +67,7 @@ object SocketManager {
             socket?.on("pet:exited-zone") { args ->
                 val data = args[0] as JSONObject
                 val alert = gson.fromJson(data.toString(), ZoneAlertEvent::class.java)
+                _zoneExitFlow.tryEmit(alert)
                 dispararNotificacionPeligro(context, alert)
             }
 
