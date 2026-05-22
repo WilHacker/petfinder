@@ -38,9 +38,8 @@ class PrismaErrorInterceptor : Interceptor {
                         }
                     }
                 }
-            } catch (_: org.json.JSONException) {
-                // Se usa '_' porque no necesitamos la variable del error.
-                // Si falla el parseo, dejamos que Retrofit maneje el error HTTP normal.
+            } catch (e: org.json.JSONException) {
+                android.util.Log.d("PrismaErrorInterceptor", "Response no es JSON Prisma: ${e.message}")
             }
         }
         return response

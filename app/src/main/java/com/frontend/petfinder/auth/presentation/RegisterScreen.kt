@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frontend.petfinder.core.presentation.components.GradientBackground
 import com.frontend.petfinder.core.presentation.components.PetFinderButton
@@ -23,14 +24,14 @@ fun RegisterScreen(
     onNavigateNext: () -> Unit
 ) {
     val context = LocalContext.current
-    val nombre by viewModel.nombre.collectAsState()
-    val apellidoPaterno by viewModel.apellidoPaterno.collectAsState()
-    val apellidoMaterno by viewModel.apellidoMaterno.collectAsState()
-    val ci by viewModel.ci.collectAsState()
-    val correo by viewModel.correo.collectAsState()
-    val clave by viewModel.clave.collectAsState()
-    val telefono by viewModel.telefono.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
+    val nombre by viewModel.nombre.collectAsStateWithLifecycle()
+    val apellidoPaterno by viewModel.apellidoPaterno.collectAsStateWithLifecycle()
+    val apellidoMaterno by viewModel.apellidoMaterno.collectAsStateWithLifecycle()
+    val ci by viewModel.ci.collectAsStateWithLifecycle()
+    val correo by viewModel.correo.collectAsStateWithLifecycle()
+    val clave by viewModel.clave.collectAsStateWithLifecycle()
+    val telefono by viewModel.telefono.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(uiState) {
         if (uiState is RegisterViewModel.RegisterState.Success) {
@@ -70,49 +71,49 @@ fun RegisterScreen(
             // Campos de texto usando nuestro componente minimalista
             PetFinderTextField(
                 value = nombre,
-                onValueChange = { viewModel.nombre.value = it },
+                onValueChange = { viewModel.onNombreChange(it) },
                 placeholder = "Nombre"
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             PetFinderTextField(
                 value = apellidoPaterno,
-                onValueChange = { viewModel.apellidoPaterno.value = it },
+                onValueChange = { viewModel.onApellidoPaternoChange(it) },
                 placeholder = "Apellido Paterno"
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             PetFinderTextField(
                 value = apellidoMaterno,
-                onValueChange = { viewModel.apellidoMaterno.value = it },
+                onValueChange = { viewModel.onApellidoMaternoChange(it) },
                 placeholder = "Apellido Materno"
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             PetFinderTextField(
                 value = ci,
-                onValueChange = { viewModel.ci.value = it },
+                onValueChange = { viewModel.onCiChange(it) },
                 placeholder = "Cédula de Identidad (CI)"
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             PetFinderTextField(
                 value = telefono,
-                onValueChange = { viewModel.telefono.value = it },
+                onValueChange = { viewModel.onTelefonoChange(it) },
                 placeholder = "Número de WhatsApp"
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             PetFinderTextField(
                 value = correo,
-                onValueChange = { viewModel.correo.value = it },
+                onValueChange = { viewModel.onCorreoChange(it) },
                 placeholder = "Correo Electrónico"
             )
             Spacer(modifier = Modifier.height(16.dp))
 
             PetFinderTextField(
                 value = clave,
-                onValueChange = { viewModel.clave.value = it },
+                onValueChange = { viewModel.onClaveChange(it) },
                 placeholder = "Contraseña",
                 visualTransformation = PasswordVisualTransformation()
             )

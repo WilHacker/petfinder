@@ -3,6 +3,7 @@ package com.frontend.petfinder.geofencing.presentation
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
+import coil.imageLoader
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -41,39 +43,59 @@ import com.google.maps.android.compose.*
 // --- GENERADOR DE AVATARES CIRCULARES PREMIUM ---
 @Composable
 fun rememberCustomMarkerIcon(context: Context, url: String?, borderColor: Color): BitmapDescriptor? {
-    var markerIcon by remember(url) { mutableStateOf<BitmapDescriptor?>(null) }
+    var markerIcon by remember(url, borderColor) { mutableStateOf<BitmapDescriptor?>(null) }
 
-    LaunchedEffect(url) {
-        if (url != null) {
-            val loader = coil.ImageLoader(context)
+    LaunchedEffect(url, borderColor) {
+        if (url == null) return@LaunchedEffect
+        runCatching {
             val request = coil.request.ImageRequest.Builder(context)
                 .data(url)
                 .size(112, 112)
-                .transformations(coil.transform.CircleCropTransformation())
-                .allowHardware(false) // Necesario para dibujar en Canvas
+                .scale(coil.size.Scale.FILL)
+                .allowHardware(false)
                 .build()
 
-            val result = loader.execute(request)
-            if (result is coil.request.SuccessResult) {
-                val originalBitmap = (result.drawable as android.graphics.drawable.BitmapDrawable).bitmap
+            val result = context.imageLoader.execute(request)
+            if (result !is coil.request.SuccessResult) return@runCatching
 
-                val output = android.graphics.Bitmap.createBitmap(132, 132, android.graphics.Bitmap.Config.ARGB_8888)
-                val canvas = android.graphics.Canvas(output)
-                val paint = android.graphics.Paint().apply { isAntiAlias = true }
+            // Safe cast: algunos formatos (WebP animado, SVG) no son BitmapDrawable
+            val raw = (result.drawable as? android.graphics.drawable.BitmapDrawable)
+                ?.bitmap ?: return@runCatching
 
-                // Borde exterior (Naranja o Verde)
-                paint.color = borderColor.toArgb()
-                canvas.drawCircle(66f, 66f, 66f, paint)
+            // Escala explícita para garantizar 112×112 sin importar el aspect ratio original
+            val photoSize = 112
+            val src = if (raw.width == photoSize && raw.height == photoSize) raw
+                      else android.graphics.Bitmap.createScaledBitmap(raw, photoSize, photoSize, true)
 
-                // Espacio en blanco interior
-                paint.color = android.graphics.Color.WHITE
-                canvas.drawCircle(66f, 66f, 60f, paint)
+            val markerSize = 132
+            val center = markerSize / 2f       // 66f
+            val photoRadius = photoSize / 2f   // 56f
 
-                // Dibujamos la foto recortada
-                canvas.drawBitmap(originalBitmap, 10f, 10f, null)
+            val output = android.graphics.Bitmap.createBitmap(
+                markerSize, markerSize, android.graphics.Bitmap.Config.ARGB_8888
+            )
+            val canvas = android.graphics.Canvas(output)
+            val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
 
-                markerIcon = BitmapDescriptorFactory.fromBitmap(output)
+            // 1. Borde exterior de color
+            paint.color = borderColor.toArgb()
+            canvas.drawCircle(center, center, center, paint)
+
+            // 2. Anillo blanco interior
+            paint.color = android.graphics.Color.WHITE
+            canvas.drawCircle(center, center, 60f, paint)
+
+            // 3. Foto recortada en círculo exacto (clipPath evita bordes irregulares)
+            val clipPath = android.graphics.Path().apply {
+                addCircle(center, center, photoRadius, android.graphics.Path.Direction.CW)
             }
+            canvas.save()
+            canvas.clipPath(clipPath)
+            val offset = (markerSize - photoSize) / 2f  // 10f
+            canvas.drawBitmap(src, offset, offset, paint)
+            canvas.restore()
+
+            markerIcon = BitmapDescriptorFactory.fromBitmap(output)
         }
     }
     return markerIcon
@@ -90,20 +112,59 @@ fun MapHomeScreen(
     val context = LocalContext.current
 
     // --- ESTADOS DEL VIEWMODEL ---
-    val snapshot by mapViewModel.snapshot.collectAsState()
-    val pets by mapViewModel.pets.collectAsState()
-    val isDrawingMode by mapViewModel.isDrawingMode.collectAsState()
-    val drawingType by mapViewModel.drawingType.collectAsState()
-    val tempCircleCenter by mapViewModel.tempCircleCenter.collectAsState()
-    val tempPolygonPoints by mapViewModel.tempPolygonPoints.collectAsState()
-    val circleRadius by mapViewModel.circleRadius.collectAsState()
-    val isTracking by mapViewModel.isTracking.collectAsState()
-    val livePetLocations by mapViewModel.livePetLocations.collectAsState()
-    val liveOwnerLocations by mapViewModel.liveOwnerLocations.collectAsState()
-    val trackingError by mapViewModel.trackingError.collectAsState()
-    val lostPets by mapViewModel.lostPets.collectAsState()
-    val showLostPets by mapViewModel.showLostPets.collectAsState()
-    val zoneExitAlert by mapViewModel.zoneExitAlert.collectAsState()
+    val snapshot by mapViewModel.snapshot.collectAsStateWithLifecycle()
+    val pets by mapViewModel.pets.collectAsStateWithLifecycle()
+    val isDrawingMode by mapViewModel.isDrawingMode.collectAsStateWithLifecycle()
+    val drawingType by mapViewModel.drawingType.collectAsStateWithLifecycle()
+    val tempCircleCenter by mapViewModel.tempCircleCenter.collectAsStateWithLifecycle()
+    val tempPolygonPoints by mapViewModel.tempPolygonPoints.collectAsStateWithLifecycle()
+    val circleRadius by mapViewModel.circleRadius.collectAsStateWithLifecycle()
+    val isTracking by mapViewModel.isTracking.collectAsStateWithLifecycle()
+    val livePetLocations by mapViewModel.livePetLocations.collectAsStateWithLifecycle()
+    val liveOwnerLocations by mapViewModel.liveOwnerLocations.collectAsStateWithLifecycle()
+    val trackingError by mapViewModel.trackingError.collectAsStateWithLifecycle()
+    val lostPets by mapViewModel.lostPets.collectAsStateWithLifecycle()
+    val showLostPets by mapViewModel.showLostPets.collectAsStateWithLifecycle()
+    val zoneExitAlert by mapViewModel.zoneExitAlert.collectAsStateWithLifecycle()
+
+    // IDs de mascotas con reporte activo — se renderizan con marcador rojo
+    val desaparecidasIds = remember(snapshot) {
+        snapshot?.marcadores?.desaparecidas?.mapTo(mutableSetOf()) { it.mascotaId } ?: emptySet()
+    }
+
+    val petsToDraw = remember(snapshot, livePetLocations) {
+        val result = mutableMapOf<String, Pair<LatLng, String?>>()
+        snapshot?.let { data ->
+            data.zonas.forEach { zona ->
+                val fallbackPos = when (zona.tipo) {
+                    "circulo" -> zona.centro?.let { LatLng(it.lat, it.lng) }
+                    "poligono" -> {
+                        val coordinates = zona.geometria?.coordinates
+                        if (!coordinates.isNullOrEmpty() && coordinates[0].isNotEmpty()) {
+                            val firstPoint = coordinates[0][0]
+                            LatLng(firstPoint[1], firstPoint[0])
+                        } else null
+                    }
+                    else -> null
+                }
+                zona.mascotas?.forEach { pet ->
+                    val livePos = livePetLocations[pet.mascotaId]
+                    val explicitPos = pet.ubicacion?.let { LatLng(it.lat, it.lng) }
+                    val finalPos = livePos ?: explicitPos ?: fallbackPos
+                    if (finalPos != null) {
+                        result[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
+                    }
+                }
+            }
+            // Desaparecidas con reporte: posición GPS exacta del reporte, sobreescribe fallback
+            data.marcadores.desaparecidas.forEach { pet ->
+                val livePos = livePetLocations[pet.mascotaId]
+                val finalPos = livePos ?: LatLng(pet.lat, pet.lng)
+                result[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
+            }
+        }
+        result
+    }
 
     var hasLocationPermission by remember { mutableStateOf(false) }
     var showAssignPetsDialog by remember { mutableStateOf(false) }
@@ -167,49 +228,21 @@ fun MapHomeScreen(
                     }
 
                     // 2. MARCADORES DE MASCOTAS
-                    val petsToDraw = mutableMapOf<String, Pair<LatLng, String?>>()
-
-                    data.zonas.forEach { zona ->
-                        val fallbackPos = when (zona.tipo) {
-                            "circulo" -> {
-                                zona.centro?.let { LatLng(it.lat, it.lng) }
-                            }
-                            "poligono" -> {
-                                val coordinates = zona.geometria?.coordinates
-                                if (!coordinates.isNullOrEmpty() && coordinates[0].isNotEmpty()) {
-                                    val firstPoint = coordinates[0][0]
-                                    LatLng(firstPoint[1], firstPoint[0])
-                                } else null
-                            }
-                            else -> null
-                        }
-
-                        zona.mascotas?.forEach { pet ->
-                            val livePos = livePetLocations[pet.mascotaId]
-                            val explicitPos = pet.ubicacion?.let { LatLng(it.lat, it.lng) }
-
-                            val finalPos = livePos ?: explicitPos ?: fallbackPos
-                            if (finalPos != null) {
-                                petsToDraw[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
-                            }
-                        }
-                    }
-
-                    data.marcadores.desaparecidas.forEach { pet ->
-                        val livePos = livePetLocations[pet.mascotaId]
-                        val finalPos = livePos ?: LatLng(pet.lat, pet.lng)
-                        petsToDraw[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
-                    }
-
                     petsToDraw.forEach { (mascotaId, petData) ->
                         key(mascotaId) {
                             val (pos, fotoUrl) = petData
-                            val customIcon = rememberCustomMarkerIcon(context, fotoUrl, PrimaryOrange)
+                            val isLost = mascotaId in desaparecidasIds
+                            val borderColor = if (isLost) Color(0xFFE53935) else PrimaryOrange
+                            val customIcon = rememberCustomMarkerIcon(context, fotoUrl, borderColor)
 
                             Marker(
                                 state = MarkerState(position = pos),
-                                title = "Mascota",
-                                icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_ORANGE)
+                                title = if (isLost) "Extraviada" else "Mascota",
+                                snippet = if (isLost) "Mascota extraviada" else null,
+                                icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(
+                                    if (isLost) BitmapDescriptorFactory.HUE_RED
+                                    else BitmapDescriptorFactory.HUE_ORANGE
+                                )
                             )
                         }
                     }
@@ -242,9 +275,9 @@ fun MapHomeScreen(
                     }
                 }
 
-                // 4. MASCOTAS PERDIDAS PÚBLICAS (H13)
+                // 4. MASCOTAS PERDIDAS PÚBLICAS — excluye las que ya están en petsToDraw
                 if (showLostPets) {
-                    lostPets.forEach { lost ->
+                    lostPets.filter { it.mascotaId !in petsToDraw }.forEach { lost ->
                         key("lost_${lost.mascotaId}") {
                             val pos = LatLng(lost.lat, lost.lng)
                             val customIcon = rememberCustomMarkerIcon(context, lost.fotoUrl, Color(0xFFE53935))
@@ -539,7 +572,7 @@ fun MapHomeScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                         Text("Asignar a:", fontWeight = FontWeight.Bold, color = PrimaryOrange)
                         LazyColumn(modifier = Modifier.height(180.dp)) {
-                            items(pets) { pet ->
+                            items(pets, key = { it.mascotaId }) { pet ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -594,7 +627,7 @@ fun MapHomeScreen(
                 onDismiss = { showPaseoDialog = false },
                 content = {
                     LazyColumn(modifier = Modifier.height(180.dp)) {
-                        items(pets) { pet ->
+                        items(pets, key = { it.mascotaId }) { pet ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

@@ -27,6 +27,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.frontend.petfinder.core.presentation.components.DialogType
@@ -41,13 +42,13 @@ fun ProfileScreen(
     viewModel: ProfileViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val profileState by viewModel.profileState.collectAsState()
-    val saveState by viewModel.saveState.collectAsState()
-    val nombre by viewModel.nombre.collectAsState()
-    val apellidoPaterno by viewModel.apellidoPaterno.collectAsState()
-    val apellidoMaterno by viewModel.apellidoMaterno.collectAsState()
+    val profileState by viewModel.profileState.collectAsStateWithLifecycle()
+    val saveState by viewModel.saveState.collectAsStateWithLifecycle()
+    val nombre by viewModel.nombre.collectAsStateWithLifecycle()
+    val apellidoPaterno by viewModel.apellidoPaterno.collectAsStateWithLifecycle()
+    val apellidoMaterno by viewModel.apellidoMaterno.collectAsStateWithLifecycle()
 
-    val rol by PetFinderApp.sessionManager.getUserRole().collectAsState(initial = null)
+    val rol by PetFinderApp.sessionManager.getUserRole().collectAsStateWithLifecycle(initialValue = null)
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -210,7 +211,7 @@ fun ProfileScreen(
 
                     OutlinedTextField(
                         value = nombre,
-                        onValueChange = { viewModel.nombre.value = it },
+                        onValueChange = { viewModel.onNombreChange(it) },
                         label = { Text("Nombre") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -220,7 +221,7 @@ fun ProfileScreen(
 
                     OutlinedTextField(
                         value = apellidoPaterno,
-                        onValueChange = { viewModel.apellidoPaterno.value = it },
+                        onValueChange = { viewModel.onApellidoPaternoChange(it) },
                         label = { Text("Apellido Paterno") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -230,7 +231,7 @@ fun ProfileScreen(
 
                     OutlinedTextField(
                         value = apellidoMaterno,
-                        onValueChange = { viewModel.apellidoMaterno.value = it },
+                        onValueChange = { viewModel.onApellidoMaternoChange(it) },
                         label = { Text("Apellido Materno (opcional)") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),

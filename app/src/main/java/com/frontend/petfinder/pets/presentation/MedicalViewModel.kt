@@ -2,8 +2,7 @@ package com.frontend.petfinder.pets.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.frontend.petfinder.core.network.RetrofitClient
-import com.frontend.petfinder.pets.data.PetApi
+import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.CreateMedicalRecordRequest
 import com.frontend.petfinder.pets.data.dto.MedicalRecordDto
 import com.frontend.petfinder.pets.data.dto.UpdateMedicalRecordRequest
@@ -13,8 +12,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class MedicalViewModel : ViewModel() {
-
-    private val petApi = RetrofitClient.instance.create(PetApi::class.java)
 
     private val _records = MutableStateFlow<List<MedicalRecordDto>>(emptyList())
     val records: StateFlow<List<MedicalRecordDto>> = _records.asStateFlow()
@@ -39,63 +36,46 @@ class MedicalViewModel : ViewModel() {
         viewModelScope.launch {
             _isLoading.value = true
             _error.value = null
-            try {
-                val response = petApi.getMedicalRecords(petId)
-                if (response.isSuccessful) {
-                    _records.value = response.body() ?: emptyList()
-                } else {
-                    _error.value = "No se pudo cargar el historial médico."
-                }
-            } catch (e: Exception) {
-                _error.value = "Sin conexión. Verifica tu internet e intenta de nuevo."
-            } finally {
-                _isLoading.value = false
-            }
+            PetRepository.getMedicalRecords(petId).fold(
+                onSuccess = { _records.value = it },
+                onFailure = { _error.value = "No se pudo cargar el historial médico." }
+            )
+            _isLoading.value = false
         }
     }
 
     fun createRecord(petId: String, request: CreateMedicalRecordRequest) {
         viewModelScope.launch {
             _formState.value = FormState.Saving
-            try {
-                val response = petApi.createMedicalRecord(petId, request)
-                if (response.isSuccessful) {
+            PetRepository.createMedicalRecord(petId, request).fold(
+                onSuccess = {
                     _formState.value = FormState.Success
                     loadRecords(petId)
-                } else {
-                    _formState.value = FormState.Error("No se pudo guardar el registro.")
-                }
-            } catch (e: Exception) {
-                _formState.value = FormState.Error("Sin conexión. Verifica tu internet e intenta de nuevo.")
-            }
+                },
+                onFailure = { _formState.value = FormState.Error("No se pudo guardar el registro.") }
+            )
         }
     }
 
     fun updateRecord(petId: String, registroId: Int, request: UpdateMedicalRecordRequest) {
         viewModelScope.launch {
             _formState.value = FormState.Saving
-            try {
-                val response = petApi.updateMedicalRecord(petId, registroId, request)
-                if (response.isSuccessful) {
+            PetRepository.updateMedicalRecord(petId, registroId, request).fold(
+                onSuccess = {
                     _formState.value = FormState.Success
                     loadRecords(petId)
-                } else {
-                    _formState.value = FormState.Error("No se pudo actualizar el registro.")
-                }
-            } catch (e: Exception) {
-                _formState.value = FormState.Error("Sin conexión. Verifica tu internet e intenta de nuevo.")
-            }
+                },
+                onFailure = { _formState.value = FormState.Error("No se pudo actualizar el registro.") }
+            )
         }
     }
 
     fun deleteRecord(petId: String, registroId: Int) {
         viewModelScope.launch {
-            try {
-                petApi.deleteMedicalRecord(petId, registroId)
-                _records.value = _records.value.filter { it.registroId != registroId }
-            } catch (e: Exception) {
-                _error.value = "No se pudo eliminar el registro."
-            }
+            PetRepository.deleteMedicalRecord(petId, registroId).fold(
+                onSuccess = { _records.value = _records.value.filter { it.registroId != registroId } },
+                onFailure = { _error.value = "No se pudo eliminar el registro." }
+            )
         }
     }
 

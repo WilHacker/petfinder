@@ -12,15 +12,11 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import com.frontend.petfinder.core.network.RetrofitClient
+import com.frontend.petfinder.auth.data.AuthRepository
 import com.frontend.petfinder.core.network.SocketManager
 import com.frontend.petfinder.core.navigation.PetFinderNavGraph
 import com.frontend.petfinder.core.theme.PetFinderTheme
-import com.frontend.petfinder.profile.data.UserApi
-import com.frontend.petfinder.profile.data.dto.FcmTokenRequest
-import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 private const val TAG = "MainActivity"
 
@@ -68,7 +64,7 @@ class MainActivity : ComponentActivity() {
                         nombre = nombre
                     )
                     SocketManager.connect(accessToken, this@MainActivity)
-                    registrarFcmToken()
+                    AuthRepository.registrarFcmToken()
                     Log.d(TAG, "Google Sign-In completado para userId=$userId")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error procesando callback OAuth: ${e.message}", e)
@@ -81,14 +77,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun registrarFcmToken() {
-        try {
-            val fcmToken = FirebaseMessaging.getInstance().token.await()
-            PetFinderApp.sessionManager.saveFcmToken(fcmToken)
-            RetrofitClient.instance.create(UserApi::class.java)
-                .updateFcmToken(FcmTokenRequest(fcmToken))
-        } catch (e: Exception) {
-            Log.w(TAG, "FCM token post Google Sign-In: ${e.message}")
-        }
-    }
 }

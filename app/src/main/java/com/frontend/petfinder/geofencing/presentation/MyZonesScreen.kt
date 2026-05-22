@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Polyline
 import androidx.compose.material.icons.filled.ShareLocation
 import androidx.compose.material3.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,8 +37,8 @@ fun MyZonesScreen(
     onNavigateToMap: () -> Unit,
     onNavigateToZoneDetail: (Int) -> Unit = {}
 ) {
-    val zones by viewModel.userZones.collectAsState()
-    val isLoading by viewModel.isZonesLoading.collectAsState()
+    val zones by viewModel.userZones.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isZonesLoading.collectAsStateWithLifecycle()
 
     var zoneToDelete by remember { mutableStateOf<Int?>(null) }
 

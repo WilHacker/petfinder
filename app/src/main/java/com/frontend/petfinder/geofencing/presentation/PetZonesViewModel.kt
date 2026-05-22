@@ -1,120 +1,124 @@
 package com.frontend.petfinder.geofencing.presentation
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.frontend.petfinder.core.network.RetrofitClient
-import com.frontend.petfinder.geofencing.data.CreateZoneRequest
-import com.frontend.petfinder.geofencing.data.GeofencingApi
-import com.frontend.petfinder.geofencing.data.PointDto
-import com.frontend.petfinder.geofencing.data.ZoneDto
+import com.frontend.petfinder.geofencing.data.*
+import com.frontend.petfinder.geofencing.data.GeofencingRepository
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+private const val TAG = "PetZonesViewModel"
+
 class PetZonesViewModel : ViewModel() {
-    private val api = RetrofitClient.instance.create(GeofencingApi::class.java)
 
     var currentPetId: String = ""
 
     private val _zonas = MutableStateFlow<List<ZoneDto>>(emptyList())
     val zonas: StateFlow<List<ZoneDto>> = _zonas.asStateFlow()
 
-    // --- Estados del Modo Dibujo ---
-    var isDrawingMode = MutableStateFlow(false)
-    var drawingType = MutableStateFlow("circulo") // "circulo" o "poligono"
-    var newZoneName = MutableStateFlow("")
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
 
-    var tempCircleCenter = MutableStateFlow<LatLng?>(null)
-    var tempCircleRadius = MutableStateFlow(80.0) // 80 metros por defecto
+    private val _isDrawingMode = MutableStateFlow(false)
+    val isDrawingMode: StateFlow<Boolean> = _isDrawingMode.asStateFlow()
 
-    var tempPolygonPoints = MutableStateFlow<List<LatLng>>(emptyList())
+    private val _drawingType = MutableStateFlow("circulo")
+    val drawingType: StateFlow<String> = _drawingType.asStateFlow()
+
+    private val _newZoneName = MutableStateFlow("")
+    val newZoneName: StateFlow<String> = _newZoneName.asStateFlow()
+
+    private val _tempCircleCenter = MutableStateFlow<LatLng?>(null)
+    val tempCircleCenter: StateFlow<LatLng?> = _tempCircleCenter.asStateFlow()
+
+    private val _tempCircleRadius = MutableStateFlow(80.0)
+    val tempCircleRadius: StateFlow<Double> = _tempCircleRadius.asStateFlow()
+
+    private val _tempPolygonPoints = MutableStateFlow<List<LatLng>>(emptyList())
+    val tempPolygonPoints: StateFlow<List<LatLng>> = _tempPolygonPoints.asStateFlow()
 
     fun loadZones(petId: String) {
         currentPetId = petId
         viewModelScope.launch {
-            try {
-                val response = api.getPetZones(petId)
-                if (response.isSuccessful) {
-                    _zonas.value = response.body() ?: emptyList()
+            _error.value = null
+            GeofencingRepository.getPetZones(petId).fold(
+                onSuccess = { _zonas.value = it },
+                onFailure = { e ->
+                    Log.w(TAG, "loadZones: ${e.message}")
+                    _error.value = "No se pudieron cargar las zonas."
                 }
-            } catch (e: Exception) {
-                println("Error cargando zonas: ${e.message}")
-            }
+            )
         }
     }
 
     fun startDrawing(nombre: String, tipo: String) {
-        newZoneName.value = nombre
-        drawingType.value = tipo
-        isDrawingMode.value = true
-        tempCircleCenter.value = null
-        tempPolygonPoints.value = emptyList()
+        _newZoneName.value = nombre
+        _drawingType.value = tipo
+        _isDrawingMode.value = true
+        _tempCircleCenter.value = null
+        _tempPolygonPoints.value = emptyList()
     }
 
     fun cancelDrawing() {
-        isDrawingMode.value = false
-        tempCircleCenter.value = null
-        tempPolygonPoints.value = emptyList()
+        _isDrawingMode.value = false
+        _tempCircleCenter.value = null
+        _tempPolygonPoints.value = emptyList()
     }
 
-    // Registra el toque del usuario en la pantalla
     fun handleMapClick(latLng: LatLng) {
-        if (!isDrawingMode.value) return
-
-        if (drawingType.value == "circulo") {
-            tempCircleCenter.value = latLng
+        if (!_isDrawingMode.value) return
+        if (_drawingType.value == "circulo") {
+            _tempCircleCenter.value = latLng
         } else {
-            tempPolygonPoints.value = tempPolygonPoints.value + latLng
+            _tempPolygonPoints.value = _tempPolygonPoints.value + latLng
         }
     }
 
     fun undoLastPolygonPoint() {
-        val currentPoints = tempPolygonPoints.value
+        val currentPoints = _tempPolygonPoints.value
         if (currentPoints.isNotEmpty()) {
-            tempPolygonPoints.value = currentPoints.dropLast(1)
+            _tempPolygonPoints.value = currentPoints.dropLast(1)
         }
     }
 
     fun saveZone() {
         if (currentPetId.isEmpty()) return
-
         viewModelScope.launch {
-            try {
-                val request = if (drawingType.value == "circulo") {
-                    val center = tempCircleCenter.value ?: return@launch
-                    CreateZoneRequest(
-                        nombreZona = newZoneName.value,
-                        tipo = "circulo",
-                        lat = center.latitude,
-                        lng = center.longitude,
-                        radioMetros = tempCircleRadius.value
-                    )
-                } else {
-                    val points = tempPolygonPoints.value
-                    if (points.size < 3) return@launch // Un polígono necesita al menos 3 puntos
-
-                    // Android Studio dibuja el polígono abierto, pero tu backend (GeoJSON)
-                    // exige que el primer y último punto sean exactamente iguales para "cerrarlo".
-                    val closedPoints = points + points.first()
-                    val coordenadas = closedPoints.map { PointDto(lat = it.latitude, lng = it.longitude) }
-
-                    CreateZoneRequest(
-                        nombreZona = newZoneName.value,
-                        tipo = "poligono",
-                        coordenadas = coordenadas
-                    )
-                }
-
-                val response = api.createZone(currentPetId, request)
-                if (response.isSuccessful) {
-                    cancelDrawing()
-                    loadZones(currentPetId) // Recargamos para ver la zona guardada oficialmente
-                }
-            } catch (e: Exception) {
-                println("Error guardando zona: ${e.message}")
+            val request = if (_drawingType.value == "circulo") {
+                val center = _tempCircleCenter.value ?: return@launch
+                CreateZoneRequest(
+                    nombreZona = _newZoneName.value,
+                    tipo = "circulo",
+                    lat = center.latitude,
+                    lng = center.longitude,
+                    radioMetros = _tempCircleRadius.value
+                )
+            } else {
+                val points = _tempPolygonPoints.value
+                if (points.size < 3) return@launch
+                val closedPoints = points + points.first()
+                val coordenadas = closedPoints.map { PointDto(lat = it.latitude, lng = it.longitude) }
+                CreateZoneRequest(
+                    nombreZona = _newZoneName.value,
+                    tipo = "poligono",
+                    coordenadas = coordenadas
+                )
             }
+
+            GeofencingRepository.createZone(currentPetId, request).fold(
+                onSuccess = {
+                    cancelDrawing()
+                    loadZones(currentPetId)
+                },
+                onFailure = { e ->
+                    Log.w(TAG, "saveZone: ${e.message}")
+                    _error.value = "No se pudo guardar la zona. Inténtalo de nuevo."
+                }
+            )
         }
     }
 }

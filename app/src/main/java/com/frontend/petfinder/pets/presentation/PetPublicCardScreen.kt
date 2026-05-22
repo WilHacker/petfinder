@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.frontend.petfinder.core.theme.PrimaryOrange
@@ -45,7 +46,7 @@ fun PetPublicCardScreen(
     viewModel: PetPublicCardViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val cardState by viewModel.cardState.collectAsState()
+    val cardState by viewModel.cardState.collectAsStateWithLifecycle()
 
     LaunchedEffect(token) {
         viewModel.loadCard(token)

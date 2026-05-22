@@ -10,7 +10,7 @@ import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.ShareLocation
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
@@ -39,7 +39,7 @@ fun MainScreen(rootNavController: NavHostController) {
     // CEREBRO COMPARTIDO: Ambas pestañas verán exactamente los mismos datos
     val sharedMapViewModel: MapViewModel = viewModel()
 
-    val rol by PetFinderApp.sessionManager.getUserRole().collectAsState(initial = null)
+    val rol by PetFinderApp.sessionManager.getUserRole().collectAsStateWithLifecycle(initialValue = null)
     val isAdmin = rol == "admin"
 
     Scaffold(
@@ -51,6 +51,7 @@ fun MainScreen(rootNavController: NavHostController) {
             CustomBottomNavigationBar(
                 currentRoute = currentRoute,
                 onNavigate = { route ->
+                    if (route != NavRoutes.MapHome.route) sharedMapViewModel.cancelDrawing()
                     bottomNavController.navigate(route) {
                         popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
                         launchSingleTop = true

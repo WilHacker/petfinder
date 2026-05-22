@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frontend.petfinder.core.presentation.components.DialogType
 import com.frontend.petfinder.core.presentation.components.PetFinderDialog
@@ -36,9 +37,9 @@ fun ZoneDetailScreen(
     viewModel: ZoneDetailViewModel = viewModel(),
     onNavigateBack: () -> Unit
 ) {
-    val zoneState by viewModel.zoneState.collectAsState()
-    val userPets by viewModel.userPets.collectAsState()
-    val actionState by viewModel.actionState.collectAsState()
+    val zoneState by viewModel.zoneState.collectAsStateWithLifecycle()
+    val userPets by viewModel.userPets.collectAsStateWithLifecycle()
+    val actionState by viewModel.actionState.collectAsStateWithLifecycle()
 
     var showAddPetsSheet by remember { mutableStateOf(false) }
     var petToRemove by remember { mutableStateOf<ZonePetDetailDto?>(null) }

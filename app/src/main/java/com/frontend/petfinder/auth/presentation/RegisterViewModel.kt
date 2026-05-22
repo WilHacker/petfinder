@@ -1,35 +1,50 @@
 package com.frontend.petfinder.auth.presentation
 
 import android.content.Context
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.petfinder.PetFinderApp
-import com.frontend.petfinder.auth.data.AuthApi
+import com.frontend.petfinder.auth.data.AuthRepository
 import com.frontend.petfinder.auth.data.MedioContactoDto
 import com.frontend.petfinder.auth.data.RegisterRequest
-import com.frontend.petfinder.core.network.RetrofitClient
 import com.frontend.petfinder.core.network.SocketManager
-import com.frontend.petfinder.profile.data.UserApi
-import com.frontend.petfinder.profile.data.dto.FcmTokenRequest
-import com.google.firebase.messaging.FirebaseMessaging
+import com.frontend.petfinder.core.network.toPrismaMessage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
-
-private const val TAG = "RegisterViewModel"
+import retrofit2.HttpException
 
 class RegisterViewModel : ViewModel() {
 
-    var nombre = MutableStateFlow("")
-    var apellidoPaterno = MutableStateFlow("")
-    var apellidoMaterno = MutableStateFlow("")
-    var ci = MutableStateFlow("")
-    var correo = MutableStateFlow("")
-    var clave = MutableStateFlow("")
-    var telefono = MutableStateFlow("")
+    private val _nombre = MutableStateFlow("")
+    val nombre: StateFlow<String> = _nombre.asStateFlow()
+
+    private val _apellidoPaterno = MutableStateFlow("")
+    val apellidoPaterno: StateFlow<String> = _apellidoPaterno.asStateFlow()
+
+    private val _apellidoMaterno = MutableStateFlow("")
+    val apellidoMaterno: StateFlow<String> = _apellidoMaterno.asStateFlow()
+
+    private val _ci = MutableStateFlow("")
+    val ci: StateFlow<String> = _ci.asStateFlow()
+
+    private val _correo = MutableStateFlow("")
+    val correo: StateFlow<String> = _correo.asStateFlow()
+
+    private val _clave = MutableStateFlow("")
+    val clave: StateFlow<String> = _clave.asStateFlow()
+
+    private val _telefono = MutableStateFlow("")
+    val telefono: StateFlow<String> = _telefono.asStateFlow()
+
+    fun onNombreChange(v: String) { _nombre.value = v }
+    fun onApellidoPaternoChange(v: String) { _apellidoPaterno.value = v }
+    fun onApellidoMaternoChange(v: String) { _apellidoMaterno.value = v }
+    fun onCiChange(v: String) { _ci.value = v }
+    fun onCorreoChange(v: String) { _correo.value = v }
+    fun onClaveChange(v: String) { _clave.value = v }
+    fun onTelefonoChange(v: String) { _telefono.value = v }
 
     sealed class RegisterState {
         object Idle : RegisterState()
@@ -42,31 +57,23 @@ class RegisterViewModel : ViewModel() {
     val uiState: StateFlow<RegisterState> = _uiState.asStateFlow()
 
     fun registerOwner(context: Context) {
-        if (nombre.value.isBlank() || ci.value.isBlank() || correo.value.isBlank() || clave.value.isBlank()) {
+        if (_nombre.value.isBlank() || _ci.value.isBlank() || _correo.value.isBlank() || _clave.value.isBlank()) {
             _uiState.value = RegisterState.Error("Faltan campos obligatorios.")
             return
         }
-
         viewModelScope.launch {
             _uiState.value = RegisterState.Loading
-            try {
-                val api = RetrofitClient.instance.create(AuthApi::class.java)
-                val request = RegisterRequest(
-                    nombre = nombre.value,
-                    apellidoPaterno = apellidoPaterno.value,
-                    apellidoMaterno = apellidoMaterno.value,
-                    ci = ci.value,
-                    correoElectronico = correo.value,
-                    clave = clave.value,
-                    medioContacto = MedioContactoDto(tipo = "WhatsApp", valor = telefono.value)
-                )
-
-                val response = api.registerOwner(request)
-
-                if (response.isSuccessful) {
-                    val body = response.body()!!
-
-                    // Persistir sesión — el backend ya devuelve tokens al registrarse
+            val request = RegisterRequest(
+                nombre = _nombre.value,
+                apellidoPaterno = _apellidoPaterno.value,
+                apellidoMaterno = _apellidoMaterno.value,
+                ci = _ci.value,
+                correoElectronico = _correo.value,
+                clave = _clave.value,
+                medioContacto = MedioContactoDto(tipo = "WhatsApp", valor = _telefono.value)
+            )
+            AuthRepository.register(request).fold(
+                onSuccess = { body ->
                     PetFinderApp.sessionManager.saveSession(
                         accessToken = body.accessToken,
                         refreshToken = body.refreshToken,
@@ -74,37 +81,21 @@ class RegisterViewModel : ViewModel() {
                         rol = body.usuario.rol,
                         nombre = body.usuario.nombre
                     )
-
-                    // Conectar WebSocket
                     SocketManager.connect(body.accessToken, context)
-
-                    // Registrar FCM token (silencioso si falla)
-                    registrarFcmToken()
-
+                    AuthRepository.registrarFcmToken()
                     _uiState.value = RegisterState.Success
-                } else {
-                    val msg = when (response.code()) {
-                        409 -> "Este correo ya está registrado."
-                        400 -> "Datos inválidos. Revisa el formulario."
-                        else -> "Error del servidor (${response.code()})"
-                    }
-                    _uiState.value = RegisterState.Error(msg)
+                },
+                onFailure = { e ->
+                    val code = (e as? HttpException)?.code() ?: -1
+                    _uiState.value = RegisterState.Error(
+                        e.toPrismaMessage() ?: when (code) {
+                            409 -> "Este correo ya está registrado."
+                            400 -> "Datos inválidos. Revisa el formulario."
+                            else -> "Error de red. Verifica tu conexión."
+                        }
+                    )
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "registerOwner: ${e.message}", e)
-                _uiState.value = RegisterState.Error("Error de red. Verifica tu conexión.")
-            }
-        }
-    }
-
-    private suspend fun registrarFcmToken() {
-        try {
-            val fcmToken = FirebaseMessaging.getInstance().token.await()
-            PetFinderApp.sessionManager.saveFcmToken(fcmToken)
-            val userApi = RetrofitClient.instance.create(UserApi::class.java)
-            userApi.updateFcmToken(FcmTokenRequest(fcmToken))
-        } catch (e: Exception) {
-            Log.w(TAG, "No se pudo registrar el FCM token: ${e.message}")
+            )
         }
     }
 }

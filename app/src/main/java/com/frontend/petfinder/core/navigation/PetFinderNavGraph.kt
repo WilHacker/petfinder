@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -26,7 +27,7 @@ import com.frontend.petfinder.profile.presentation.ProfileScreen
 fun PetFinderNavGraph(navController: NavHostController) {
     val isSessionValid by PetFinderApp.sessionManager
         .isSessionValid()
-        .collectAsState(initial = null)
+        .collectAsStateWithLifecycle(initialValue = null)
 
     when (isSessionValid) {
         null -> {

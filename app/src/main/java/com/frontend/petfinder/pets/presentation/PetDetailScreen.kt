@@ -26,6 +26,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.frontend.petfinder.core.presentation.components.DialogType
@@ -45,6 +46,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.Locale
+
+private sealed class PetDetailModal {
+    object None : PetDetailModal()
+    object StatusSheet : PetDetailModal()
+    object QrDialog : PetDetailModal()
+    object LostConfirm : PetDetailModal()
+    object LocationSheet : PetDetailModal()
+}
 
 private fun estadoLabel(estado: String) = when (estado) {
     "en_casa"    -> "En casa"
@@ -86,19 +95,16 @@ fun PetDetailScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val state by viewModel.state.collectAsState()
-    val qrBase64 by viewModel.qrBase64.collectAsState()
-    val qrError by viewModel.qrError.collectAsState()
-    val statusChanging by viewModel.statusChanging.collectAsState()
-    val scans by viewModel.scans.collectAsState()
-    val reports by viewModel.reports.collectAsState()
-    val locationUpdating by viewModel.locationUpdating.collectAsState()
-    val locationError by viewModel.locationError.collectAsState()
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val qrBase64 by viewModel.qrBase64.collectAsStateWithLifecycle()
+    val qrError by viewModel.qrError.collectAsStateWithLifecycle()
+    val statusChanging by viewModel.statusChanging.collectAsStateWithLifecycle()
+    val scans by viewModel.scans.collectAsStateWithLifecycle()
+    val reports by viewModel.reports.collectAsStateWithLifecycle()
+    val locationUpdating by viewModel.locationUpdating.collectAsStateWithLifecycle()
+    val locationError by viewModel.locationError.collectAsStateWithLifecycle()
 
-    var showStatusSheet by remember { mutableStateOf(false) }
-    var showQrDialog by remember { mutableStateOf(false) }
-    var showLostConfirm by remember { mutableStateOf(false) }
-    var showLocationSheet by remember { mutableStateOf(false) }
+    var activeModal by remember { mutableStateOf<PetDetailModal>(PetDetailModal.None) }
     var locationSuccess by remember { mutableStateOf(false) }
 
     LaunchedEffect(mascotaId) { viewModel.load(mascotaId) }
@@ -108,7 +114,7 @@ fun PetDetailScreen(
     }
 
     // ── Diálogo confirmación "extraviada" ──────────────────────────────────
-    if (showLostConfirm) {
+    if (activeModal is PetDetailModal.LostConfirm) {
         PetFinderDialog(
             type = DialogType.DANGER,
             title = "¿Reportar como extraviada?",
@@ -117,20 +123,20 @@ fun PetDetailScreen(
             dismissText = "Cancelar",
             onConfirm = {
                 viewModel.updateStatus(mascotaId, "extraviada")
-                showLostConfirm = false
+                activeModal = PetDetailModal.None
             },
-            onDismiss = { showLostConfirm = false }
+            onDismiss = { activeModal = PetDetailModal.None }
         )
     }
 
     // ── Diálogo QR ────────────────────────────────────────────────────────
-    if (showQrDialog) {
+    if (activeModal is PetDetailModal.QrDialog) {
         PetFinderDialog(
             type = DialogType.INFO,
             title = "Placa QR Activa",
             confirmText = "Cerrar",
-            onConfirm = { showQrDialog = false; viewModel.clearQr() },
-            onDismiss = { showQrDialog = false; viewModel.clearQr() },
+            onConfirm = { activeModal = PetDetailModal.None; viewModel.clearQr() },
+            onDismiss = { activeModal = PetDetailModal.None; viewModel.clearQr() },
             content = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -155,10 +161,10 @@ fun PetDetailScreen(
     }
 
     // ── Bottom sheet cambio de estado ─────────────────────────────────────
-    if (showStatusSheet) {
+    if (activeModal is PetDetailModal.StatusSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
-            onDismissRequest = { showStatusSheet = false },
+            onDismissRequest = { activeModal = PetDetailModal.None },
             sheetState = sheetState,
             containerColor = Color.White,
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
@@ -180,7 +186,7 @@ fun PetDetailScreen(
                     color = Color(0xFF4CAF50),
                     onClick = {
                         viewModel.updateStatus(mascotaId, "en_casa")
-                        showStatusSheet = false
+                        activeModal = PetDetailModal.None
                     }
                 )
                 StatusOption(
@@ -190,7 +196,7 @@ fun PetDetailScreen(
                     color = PrimaryOrange,
                     onClick = {
                         viewModel.updateStatus(mascotaId, "en_paseo")
-                        showStatusSheet = false
+                        activeModal = PetDetailModal.None
                     }
                 )
                 StatusOption(
@@ -198,19 +204,16 @@ fun PetDetailScreen(
                     label = "Reportar extraviada",
                     description = "Alerta a la red de usuarios cercanos",
                     color = Color(0xFFE53935),
-                    onClick = {
-                        showStatusSheet = false
-                        showLostConfirm = true
-                    }
+                    onClick = { activeModal = PetDetailModal.LostConfirm }
                 )
             }
         }
     }
 
     // ── Sheet: actualizar ubicación ──────────────────────────────────────
-    if (showLocationSheet) {
+    if (activeModal is PetDetailModal.LocationSheet) {
         ModalBottomSheet(
-            onDismissRequest = { showLocationSheet = false; locationSuccess = false },
+            onDismissRequest = { activeModal = PetDetailModal.None; locationSuccess = false },
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             containerColor = MaterialTheme.colorScheme.background
         ) {
@@ -331,13 +334,13 @@ fun PetDetailScreen(
                 scans = scans,
                 reports = reports,
                 onBack = onNavigateBack,
-                onShowStatusSheet = { showStatusSheet = true },
+                onShowStatusSheet = { activeModal = PetDetailModal.StatusSheet },
                 onShowQr = {
-                    showQrDialog = true
+                    activeModal = PetDetailModal.QrDialog
                     viewModel.loadQr(mascotaId)
                 },
                 onNavigateToMedical = onNavigateToMedical,
-                onShowLocationSheet = { showLocationSheet = true }
+                onShowLocationSheet = { activeModal = PetDetailModal.LocationSheet }
             )
         }
     }

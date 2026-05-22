@@ -5,8 +5,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.frontend.petfinder.core.network.RetrofitClient
-import com.frontend.petfinder.pets.data.PetApi
+import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PublicPetCardDto
 import com.frontend.petfinder.pets.data.dto.QrScanRequest
 import com.google.android.gms.location.LocationServices
@@ -17,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
+import retrofit2.HttpException
 
 private const val TAG = "PetPublicCardViewModel"
 
@@ -34,28 +34,19 @@ class PetPublicCardViewModel : ViewModel() {
     private val _scanRegistered = MutableStateFlow(false)
     val scanRegistered: StateFlow<Boolean> = _scanRegistered.asStateFlow()
 
-    private val api: PetApi by lazy {
-        RetrofitClient.instance.create(PetApi::class.java)
-    }
-
     fun loadCard(token: String) {
         viewModelScope.launch {
             _cardState.value = CardState.Loading
-            try {
-                val response = api.getPublicPetCard(token)
-                if (response.isSuccessful) {
-                    _cardState.value = CardState.Success(response.body()!!)
-                } else {
-                    val msg = when (response.code()) {
+            PetRepository.getPublicPetCard(token).fold(
+                onSuccess = { _cardState.value = CardState.Success(it) },
+                onFailure = { e ->
+                    val code = (e as? HttpException)?.code() ?: -1
+                    _cardState.value = CardState.Error(when (code) {
                         404 -> "Este código QR no existe o fue desactivado."
-                        else -> "Error al cargar la información (${response.code()})"
-                    }
-                    _cardState.value = CardState.Error(msg)
+                        else -> "Error al cargar la información (${code})"
+                    })
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "loadCard: ${e.message}", e)
-                _cardState.value = CardState.Error("Sin conexión. Verifica tu internet.")
-            }
+            )
         }
     }
 
@@ -76,17 +67,16 @@ class PetPublicCardViewModel : ViewModel() {
                     null
                 }
 
-                val request = QrScanRequest(
-                    lat = location?.latitude,
-                    lng = location?.longitude
+                val request = QrScanRequest(lat = location?.latitude, lng = location?.longitude)
+                PetRepository.registerQrScan(token, request).fold(
+                    onSuccess = {
+                        _scanRegistered.value = true
+                        Log.d(TAG, "Escaneo registrado — lat=${request.lat}, lng=${request.lng}")
+                    },
+                    onFailure = { e -> Log.w(TAG, "No se pudo registrar el escaneo: ${e.message}") }
                 )
-                val response = api.registerQrScan(token, request)
-                if (response.isSuccessful) {
-                    _scanRegistered.value = true
-                    Log.d(TAG, "Escaneo registrado — lat=${request.lat}, lng=${request.lng}")
-                }
             } catch (e: Exception) {
-                Log.w(TAG, "registerScan silencioso: ${e.message}")
+                Log.w(TAG, "registerScan falló inesperadamente: ${e.message}")
             }
         }
     }

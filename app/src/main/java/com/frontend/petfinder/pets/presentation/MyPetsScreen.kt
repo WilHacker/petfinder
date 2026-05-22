@@ -24,6 +24,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.frontend.petfinder.core.presentation.components.DialogType
@@ -54,10 +55,11 @@ fun MyPetsScreen(
     onNavigateToRegisterPet: () -> Unit,
     onNavigateToPetDetail: (String) -> Unit = {}
 ) {
-    val pets by viewModel.pets.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val selectedQr by viewModel.selectedQrBase64.collectAsState()
-    val qrError by viewModel.qrErrorMessage.collectAsState()
+    val pets by viewModel.pets.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val selectedQr by viewModel.selectedQrBase64.collectAsStateWithLifecycle()
+    val qrError by viewModel.qrErrorMessage.collectAsStateWithLifecycle()
 
     var showQrDialog by remember { mutableStateOf(false) }
 
@@ -114,6 +116,35 @@ fun MyPetsScreen(
                         modifier = Modifier.align(Alignment.Center),
                         color = PrimaryOrange
                     )
+                }
+
+                error != null && pets.isEmpty() -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 32.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            modifier = Modifier.size(64.dp),
+                            tint = Color(0xFFFFB300)
+                        )
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text(
+                            text = error!!,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(24.dp))
+                        PetFinderButton(
+                            text = "Reintentar",
+                            onClick = { viewModel.loadMyPets() }
+                        )
+                    }
                 }
 
                 pets.isEmpty() -> {

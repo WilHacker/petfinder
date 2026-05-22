@@ -4,7 +4,6 @@ import android.util.Log
 import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.auth.data.AuthApi
 import com.frontend.petfinder.auth.data.RefreshTokenRequest
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
 import okhttp3.OkHttpClient
@@ -21,13 +20,14 @@ class TokenAuthenticator : Authenticator {
     // Retrofit limpio sin AuthInterceptor para evitar bucles infinitos en el refresh
     private val refreshApi: AuthApi by lazy {
         Retrofit.Builder()
-            .baseUrl("https://backend-petfinder.onrender.com/")
+            .baseUrl(AppConfig.BASE_URL)
             .client(OkHttpClient.Builder().build())
             .addConverterFactory(GsonConverterFactory.create())
             .build()
             .create(AuthApi::class.java)
     }
 
+    @Synchronized
     override fun authenticate(route: Route?, response: Response): Request? {
         // Si la request ya no tenía header de auth, no hay token que renovar
         if (response.request.header("Authorization") == null) return null
@@ -39,20 +39,21 @@ class TokenAuthenticator : Authenticator {
             return null
         }
 
-        val refreshToken = runBlocking {
-            PetFinderApp.sessionManager.getRefreshToken().first()
-        } ?: run {
+        // Lee del caché en memoria — sin runBlocking adicional
+        val refreshToken = PetFinderApp.sessionManager.cachedRefreshToken ?: run {
             Log.w(TAG, "No hay refreshToken guardado — cerrando sesión")
             return null
         }
 
         return try {
+            // Un solo runBlocking necesario: llamada de red síncrona al endpoint de refresh
             val refreshResponse = runBlocking {
                 refreshApi.refreshToken(RefreshTokenRequest(refreshToken))
             }
 
             if (refreshResponse.isSuccessful) {
                 val body = refreshResponse.body()!!
+                // updateTokens actualiza caché en memoria Y persiste en DataStore
                 runBlocking {
                     PetFinderApp.sessionManager.updateTokens(
                         accessToken = body.accessToken,

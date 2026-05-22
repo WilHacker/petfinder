@@ -28,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.frontend.petfinder.core.presentation.components.PetFinderErrorBanner
@@ -45,14 +46,14 @@ fun RegisterPetScreen(
     viewModel: RegisterPetViewModel = viewModel(),
     onNavigateBack: () -> Unit
 ) {
-    val nombre by viewModel.nombre.collectAsState()
-    val tiposMascota by viewModel.tiposMascota.collectAsState()
-    val tipoSeleccionado by viewModel.tipoSeleccionado.collectAsState()
-    val sexo by viewModel.sexo.collectAsState()
-    val colorPrimario by viewModel.colorPrimario.collectAsState()
-    val rasgosParticulares by viewModel.rasgosParticulares.collectAsState()
-    val fotosSeleccionadas by viewModel.fotosSeleccionadas.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
+    val nombre by viewModel.nombre.collectAsStateWithLifecycle()
+    val tiposMascota by viewModel.tiposMascota.collectAsStateWithLifecycle()
+    val tipoSeleccionado by viewModel.tipoSeleccionado.collectAsStateWithLifecycle()
+    val sexo by viewModel.sexo.collectAsStateWithLifecycle()
+    val colorPrimario by viewModel.colorPrimario.collectAsStateWithLifecycle()
+    val rasgosParticulares by viewModel.rasgosParticulares.collectAsStateWithLifecycle()
+    val fotosSeleccionadas by viewModel.fotosSeleccionadas.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     var expandedTipo by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -61,7 +62,7 @@ fun RegisterPetScreen(
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia(maxItems = 4)
     ) { uris ->
-        if (uris.isNotEmpty()) viewModel.fotosSeleccionadas.value = uris
+        if (uris.isNotEmpty()) viewModel.onFotosChange(uris)
     }
 
     LaunchedEffect(uiState) {
@@ -113,7 +114,7 @@ fun RegisterPetScreen(
 
             PetFinderTextField(
                 value = nombre,
-                onValueChange = { viewModel.nombre.value = it },
+                onValueChange = { viewModel.onNombreChange(it) },
                 placeholder = "Nombre de la mascota *"
             )
             Spacer(modifier = Modifier.height(14.dp))
@@ -155,7 +156,7 @@ fun RegisterPetScreen(
                         DropdownMenuItem(
                             text = { Text(tipo.nombre) },
                             onClick = {
-                                viewModel.tipoSeleccionado.value = tipo
+                                viewModel.onTipoSeleccionado(tipo)
                                 expandedTipo = false
                             }
                         )
@@ -176,7 +177,7 @@ fun RegisterPetScreen(
                 listOf("M" to "Macho", "H" to "Hembra").forEachIndexed { index, (value, label) ->
                     SegmentedButton(
                         selected = sexo == value,
-                        onClick = { viewModel.sexo.value = value },
+                        onClick = { viewModel.onSexoChange(value) },
                         shape = SegmentedButtonDefaults.itemShape(index = index, count = 2),
                         colors = SegmentedButtonDefaults.colors(
                             activeContainerColor = PrimaryOrangeLight,
@@ -213,7 +214,7 @@ fun RegisterPetScreen(
                     Surface(
                         modifier = Modifier
                             .clip(RoundedCornerShape(50.dp))
-                            .clickable { viewModel.colorPrimario.value = if (isSelected) "" else color }
+                            .clickable { viewModel.onColorPrimarioChange(if (isSelected) "" else color) }
                             .border(
                                 width = if (isSelected) 2.dp else 1.dp,
                                 color = if (isSelected) PrimaryOrange else Color(0xFFE0E0E0),
@@ -234,7 +235,7 @@ fun RegisterPetScreen(
             }
             PetFinderTextField(
                 value = colorPrimario,
-                onValueChange = { viewModel.colorPrimario.value = it },
+                onValueChange = { viewModel.onColorPrimarioChange(it) },
                 placeholder = "O escribe el color..."
             )
             Spacer(modifier = Modifier.height(14.dp))
@@ -242,7 +243,7 @@ fun RegisterPetScreen(
             // Rasgos particulares
             OutlinedTextField(
                 value = rasgosParticulares,
-                onValueChange = { viewModel.rasgosParticulares.value = it },
+                onValueChange = { viewModel.onRasgosChange(it) },
                 placeholder = { Text("Rasgos particulares (mancha en la oreja, cojea, etc.)", color = Color.Gray) },
                 shape = RoundedCornerShape(16.dp),
                 minLines = 3,
@@ -346,10 +347,7 @@ fun RegisterPetScreen(
                                     .padding(4.dp)
                                     .size(20.dp)
                                     .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                    .clickable {
-                                        viewModel.fotosSeleccionadas.value =
-                                            fotosSeleccionadas.toMutableList().also { it.removeAt(index) }
-                                    },
+                                    .clickable { viewModel.onFotoRemoved(index) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(

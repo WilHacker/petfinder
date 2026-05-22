@@ -11,14 +11,14 @@ import androidx.core.app.NotificationCompat
 import com.frontend.petfinder.MainActivity
 import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.R
-import com.frontend.petfinder.core.network.RetrofitClient
-import com.frontend.petfinder.profile.data.UserApi
+import com.frontend.petfinder.profile.data.ProfileRepository
 import com.frontend.petfinder.profile.data.dto.FcmTokenRequest
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -35,6 +35,11 @@ class FcmService : FirebaseMessagingService() {
         createNotificationChannels()
     }
 
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
+    }
+
     override fun onNewToken(token: String) {
         Log.d(TAG, "FCM token renovado")
         serviceScope.launch {
@@ -42,8 +47,7 @@ class FcmService : FirebaseMessagingService() {
                 PetFinderApp.sessionManager.saveFcmToken(token)
                 val isValid = PetFinderApp.sessionManager.isSessionValid().first()
                 if (isValid) {
-                    RetrofitClient.instance.create(UserApi::class.java)
-                        .updateFcmToken(FcmTokenRequest(token))
+                    ProfileRepository.updateFcmToken(FcmTokenRequest(token))
                     Log.d(TAG, "Nuevo FCM token registrado en el backend")
                 }
             } catch (e: Exception) {

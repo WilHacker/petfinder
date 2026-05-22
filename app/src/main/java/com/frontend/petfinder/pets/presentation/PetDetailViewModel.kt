@@ -1,22 +1,21 @@
 package com.frontend.petfinder.pets.presentation
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.frontend.petfinder.core.network.RetrofitClient
-import com.frontend.petfinder.pets.data.PetApi
+import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PetDetailDto
 import com.frontend.petfinder.pets.data.dto.PetReportDto
 import com.frontend.petfinder.pets.data.dto.PetScanDto
-import com.frontend.petfinder.pets.data.dto.UpdateLocationRequest
-import com.frontend.petfinder.pets.data.dto.UpdateStatusRequest
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class PetDetailViewModel : ViewModel() {
+private const val TAG = "PetDetailViewModel"
 
-    private val petApi = RetrofitClient.instance.create(PetApi::class.java)
+class PetDetailViewModel : ViewModel() {
 
     sealed class DetailState {
         object Loading : DetailState()
@@ -51,36 +50,17 @@ class PetDetailViewModel : ViewModel() {
     fun load(petId: String) {
         viewModelScope.launch {
             _state.value = DetailState.Loading
-            try {
-                val response = petApi.getPetDetail(petId)
-                if (response.isSuccessful) {
-                    _state.value = DetailState.Success(response.body()!!)
-                    loadScans(petId)
-                    loadReports(petId)
-                } else {
-                    _state.value = DetailState.Error("No se pudo cargar la información de la mascota.")
-                }
-            } catch (e: Exception) {
-                _state.value = DetailState.Error("Sin conexión. Verifica tu internet e intenta de nuevo.")
-            }
-        }
-    }
 
-    private fun loadScans(petId: String) {
-        viewModelScope.launch {
-            try {
-                val r = petApi.getPetScans(petId)
-                if (r.isSuccessful) _scans.value = r.body() ?: emptyList()
-            } catch (_: Exception) {}
-        }
-    }
+            val detailJob  = async { PetRepository.getPetDetail(petId) }
+            val scansJob   = async { PetRepository.getPetScans(petId) }
+            val reportsJob = async { PetRepository.getPetReports(petId) }
 
-    private fun loadReports(petId: String) {
-        viewModelScope.launch {
-            try {
-                val r = petApi.getPetReports(petId)
-                if (r.isSuccessful) _reports.value = r.body() ?: emptyList()
-            } catch (_: Exception) {}
+            detailJob.await().fold(
+                onSuccess = { _state.value = DetailState.Success(it) },
+                onFailure = { _state.value = DetailState.Error("No se pudo cargar la información de la mascota.") }
+            )
+            scansJob.await().onSuccess   { _scans.value = it }
+            reportsJob.await().onSuccess { _reports.value = it }
         }
     }
 
@@ -88,16 +68,14 @@ class PetDetailViewModel : ViewModel() {
         viewModelScope.launch {
             _locationUpdating.value = true
             _locationError.value = null
-            try {
-                val response = petApi.updatePetLocation(petId, UpdateLocationRequest(lat, lng))
-                if (!response.isSuccessful) {
-                    _locationError.value = "No se pudo actualizar la ubicación (${response.code()})."
+            PetRepository.updatePetLocation(petId, lat, lng).fold(
+                onSuccess = {},
+                onFailure = { e ->
+                    _locationError.value = "No se pudo actualizar la ubicación."
+                    Log.w(TAG, "updateLocation: ${e.message}")
                 }
-            } catch (e: Exception) {
-                _locationError.value = "Sin conexión. Verifica tu internet."
-            } finally {
-                _locationUpdating.value = false
-            }
+            )
+            _locationUpdating.value = false
         }
     }
 
@@ -108,16 +86,8 @@ class PetDetailViewModel : ViewModel() {
     fun updateStatus(petId: String, estado: String) {
         viewModelScope.launch {
             _statusChanging.value = true
-            try {
-                val response = petApi.updatePetStatus(petId, UpdateStatusRequest(estado))
-                if (response.isSuccessful) {
-                    load(petId)
-                }
-            } catch (e: Exception) {
-                // No derriba la pantalla — el estado visual se restaura solo
-            } finally {
-                _statusChanging.value = false
-            }
+            PetRepository.updatePetStatus(petId, estado).onSuccess { load(petId) }
+            _statusChanging.value = false
         }
     }
 
@@ -125,16 +95,10 @@ class PetDetailViewModel : ViewModel() {
         viewModelScope.launch {
             _qrBase64.value = null
             _qrError.value = null
-            try {
-                val response = petApi.getPetQrCode(petId)
-                if (response.isSuccessful) {
-                    _qrBase64.value = response.body()?.string()?.replace("\"", "") ?: ""
-                } else {
-                    _qrError.value = "No se pudo cargar el código QR."
-                }
-            } catch (e: Exception) {
-                _qrError.value = "Sin conexión. Verifica tu internet e intenta de nuevo."
-            }
+            PetRepository.getPetQrCode(petId).fold(
+                onSuccess = { _qrBase64.value = it },
+                onFailure = { _qrError.value = "No se pudo cargar el código QR." }
+            )
         }
     }
 

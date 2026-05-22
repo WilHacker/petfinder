@@ -2,29 +2,53 @@ package com.frontend.petfinder.pets.presentation
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.frontend.petfinder.core.network.RetrofitClient
+import com.frontend.petfinder.core.network.toPrismaMessage
 import com.frontend.petfinder.core.utils.ImageUtils
-import com.frontend.petfinder.pets.data.PetApi
+import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.TipoMascotaDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+
+private const val TAG = "RegisterPetViewModel"
 
 class RegisterPetViewModel : ViewModel() {
 
-    var nombre = MutableStateFlow("")
-    var tiposMascota = MutableStateFlow<List<TipoMascotaDto>>(emptyList())
-    var tipoSeleccionado = MutableStateFlow<TipoMascotaDto?>(null)
+    private val _nombre = MutableStateFlow("")
+    val nombre: StateFlow<String> = _nombre.asStateFlow()
 
-    var sexo = MutableStateFlow("")
-    var colorPrimario = MutableStateFlow("")
-    var rasgosParticulares = MutableStateFlow("")
-    var fotosSeleccionadas = MutableStateFlow<List<Uri>>(emptyList())
+    private val _tiposMascota = MutableStateFlow<List<TipoMascotaDto>>(emptyList())
+    val tiposMascota: StateFlow<List<TipoMascotaDto>> = _tiposMascota.asStateFlow()
+
+    private val _tipoSeleccionado = MutableStateFlow<TipoMascotaDto?>(null)
+    val tipoSeleccionado: StateFlow<TipoMascotaDto?> = _tipoSeleccionado.asStateFlow()
+
+    private val _sexo = MutableStateFlow("")
+    val sexo: StateFlow<String> = _sexo.asStateFlow()
+
+    private val _colorPrimario = MutableStateFlow("")
+    val colorPrimario: StateFlow<String> = _colorPrimario.asStateFlow()
+
+    private val _rasgosParticulares = MutableStateFlow("")
+    val rasgosParticulares: StateFlow<String> = _rasgosParticulares.asStateFlow()
+
+    private val _fotosSeleccionadas = MutableStateFlow<List<Uri>>(emptyList())
+    val fotosSeleccionadas: StateFlow<List<Uri>> = _fotosSeleccionadas.asStateFlow()
+
+    fun onNombreChange(v: String) { _nombre.value = v }
+    fun onTipoSeleccionado(tipo: TipoMascotaDto?) { _tipoSeleccionado.value = tipo }
+    fun onSexoChange(v: String) { _sexo.value = v }
+    fun onColorPrimarioChange(v: String) { _colorPrimario.value = v }
+    fun onRasgosChange(v: String) { _rasgosParticulares.value = v }
+    fun onFotosChange(fotos: List<Uri>) { _fotosSeleccionadas.value = fotos }
+    fun onFotoRemoved(index: Int) {
+        _fotosSeleccionadas.value = _fotosSeleccionadas.value.toMutableList().also { it.removeAt(index) }
+    }
 
     sealed class RegisterPetState {
         object Idle : RegisterPetState()
@@ -42,74 +66,51 @@ class RegisterPetViewModel : ViewModel() {
 
     private fun cargarTiposDeMascota() {
         viewModelScope.launch {
-            try {
-                val api = RetrofitClient.instance.create(PetApi::class.java)
-                val response = api.getTiposMascota()
-                if (response.isSuccessful) {
-                    response.body()?.let { tiposMascota.value = it }
-                }
-            } catch (e: Exception) {
-                println("Error descargando tipos: ${e.message}")
-            }
+            PetRepository.getTiposMascota().fold(
+                onSuccess = { _tiposMascota.value = it },
+                onFailure = { e -> Log.w(TAG, "cargarTiposDeMascota: ${e.message}") }
+            )
         }
     }
 
     fun registerPet(context: Context) {
-        if (nombre.value.isBlank()) {
+        if (_nombre.value.isBlank()) {
             _uiState.value = RegisterPetState.Error("El nombre de la mascota es obligatorio.")
             return
         }
-
-        if (tipoSeleccionado.value == null) {
+        if (_tipoSeleccionado.value == null) {
             _uiState.value = RegisterPetState.Error("Selecciona el tipo de mascota para continuar.")
             return
         }
-
         viewModelScope.launch {
             _uiState.value = RegisterPetState.Loading
-            try {
-                // Instanciamos el API manualmente sin usar @Inject
-                val api = RetrofitClient.instance.create(PetApi::class.java)
 
-                val nombreBody = nombre.value.toRequestBodyText()
-                val tipoIdBody = tipoSeleccionado.value?.tipoId?.toString()?.toRequestBodyText()
-                val sexoBody = sexo.value.ifBlank { null }?.toRequestBodyText()
-                val colorBody = colorPrimario.value.ifBlank { null }?.toRequestBodyText()
-                val rasgosBody = rasgosParticulares.value.ifBlank { null }?.toRequestBodyText()
+            val nombreBody = _nombre.value.toRequestBody(null)
+            val tipoIdBody = _tipoSeleccionado.value?.tipoId?.toString()?.toRequestBody(null)
+            val sexoBody = _sexo.value.ifBlank { null }?.toRequestBody(null)
+            val colorBody = _colorPrimario.value.ifBlank { null }?.toRequestBody(null)
+            val rasgosBody = _rasgosParticulares.value.ifBlank { null }?.toRequestBody(null)
+            val fotosPart = ImageUtils.processImagesForUpload(context, _fotosSeleccionadas.value)
+            val fotoIndexBody = if (fotosPart.isNotEmpty()) "0".toRequestBody(null) else null
 
-                // 1. Usamos el ImageUtils creado anteriormente para comprimir y limitar a 4 fotos
-                val fotosPart = ImageUtils.processImagesForUpload(context, fotosSeleccionadas.value)
-
-                // 2. Solo enviamos el índice 0 si realmente hay fotos adjuntas
-                val fotoIndexBody = if (fotosPart.isNotEmpty()) "0".toRequestBodyText() else null
-
-                // 3. Llamada a la API pasando TODOS los parámetros, incluyendo rasgosParticulares
-                val response = api.registerPet(
-                    nombre = nombreBody,
-                    tipoId = tipoIdBody,
-                    sexo = sexoBody,
-                    colorPrimario = colorBody,
-                    rasgosParticulares = rasgosBody, // <- Falta corregida
-                    fotoPrincipalIndex = fotoIndexBody,
-                    fotos = fotosPart.ifEmpty { null }
-                )
-
-                if (response.isSuccessful) {
-                    val mascotaCreada = response.body()
-                    println("Mascota registrada: ${mascotaCreada?.mascotaId}")
-                    _uiState.value = RegisterPetState.Success
-                } else {
-                    val errorDelServidor = response.errorBody()?.string() ?: "Error desconocido"
-                    println("Rechazo del backend: $errorDelServidor")
-                    _uiState.value = RegisterPetState.Error("No se pudo guardar la mascota. Verifica los datos e intenta de nuevo.")
+            PetRepository.registerPet(
+                nombre = nombreBody,
+                tipoId = tipoIdBody,
+                sexo = sexoBody,
+                colorPrimario = colorBody,
+                rasgosParticulares = rasgosBody,
+                fotoPrincipalIndex = fotoIndexBody,
+                fotos = fotosPart.ifEmpty { null }
+            ).fold(
+                onSuccess = { _uiState.value = RegisterPetState.Success },
+                onFailure = { e ->
+                    _uiState.value = RegisterPetState.Error(
+                        e.toPrismaMessage()
+                            ?: "No se pudo guardar la mascota. Verifica los datos e intenta de nuevo."
+                    )
                 }
-            } catch (e: Exception) {
-                _uiState.value = RegisterPetState.Error("Sin conexión. Verifica tu internet e intenta de nuevo.")
-            }
+            )
         }
     }
 
-    private fun String.toRequestBodyText(): RequestBody {
-        return this.toRequestBody(null)
-    }
 }

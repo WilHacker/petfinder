@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "petfinder_session")
@@ -22,6 +23,21 @@ class SessionManager(private val context: Context) {
         private val KEY_FCM_TOKEN = stringPreferencesKey("fcm_token")
     }
 
+    // Caché en memoria para evitar runBlocking en AuthInterceptor/TokenAuthenticator.
+    // @Volatile garantiza visibilidad entre threads (OkHttp usa un pool de threads).
+    @Volatile var cachedAccessToken: String? = null
+        private set
+    @Volatile var cachedRefreshToken: String? = null
+        private set
+
+    // Precarga los tokens desde DataStore al inicio de la app.
+    // Se llama desde PetFinderApp.onCreate() antes del primer request de red.
+    suspend fun preloadCache() {
+        val prefs = context.dataStore.data.first()
+        cachedAccessToken = prefs[KEY_ACCESS_TOKEN]
+        cachedRefreshToken = prefs[KEY_REFRESH_TOKEN]
+    }
+
     suspend fun saveSession(
         accessToken: String,
         refreshToken: String,
@@ -29,6 +45,8 @@ class SessionManager(private val context: Context) {
         rol: String,
         nombre: String
     ) {
+        cachedAccessToken = accessToken
+        cachedRefreshToken = refreshToken
         context.dataStore.edit { prefs ->
             prefs[KEY_ACCESS_TOKEN] = accessToken
             prefs[KEY_REFRESH_TOKEN] = refreshToken
@@ -39,6 +57,8 @@ class SessionManager(private val context: Context) {
     }
 
     suspend fun updateTokens(accessToken: String, refreshToken: String) {
+        cachedAccessToken = accessToken
+        cachedRefreshToken = refreshToken
         context.dataStore.edit { prefs ->
             prefs[KEY_ACCESS_TOKEN] = accessToken
             prefs[KEY_REFRESH_TOKEN] = refreshToken
@@ -52,6 +72,8 @@ class SessionManager(private val context: Context) {
     }
 
     suspend fun clearSession() {
+        cachedAccessToken = null
+        cachedRefreshToken = null
         context.dataStore.edit { it.clear() }
     }
 

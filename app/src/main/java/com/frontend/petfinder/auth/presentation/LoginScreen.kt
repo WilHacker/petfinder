@@ -14,6 +14,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frontend.petfinder.R
 import com.frontend.petfinder.core.presentation.components.GradientBackground
@@ -28,9 +29,9 @@ fun LoginScreen(
     onNavigateToRegister: () -> Unit
 ) {
     val context = LocalContext.current
-    val correo by viewModel.correo.collectAsState()
-    val clave by viewModel.clave.collectAsState()
-    val uiState by viewModel.uiState.collectAsState()
+    val correo by viewModel.correo.collectAsStateWithLifecycle()
+    val clave by viewModel.clave.collectAsStateWithLifecycle()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
 
     LaunchedEffect(uiState) {
         if (uiState is LoginViewModel.LoginState.Success) {
@@ -99,7 +100,7 @@ fun LoginScreen(
             // Campo de Email Minimalista
             PetFinderTextField(
                 value = correo,
-                onValueChange = { viewModel.correo.value = it },
+                onValueChange = { viewModel.onCorreoChange(it) },
                 placeholder = "Tu correo electrónico"
             )
 
@@ -108,7 +109,7 @@ fun LoginScreen(
             // Campo de Contraseña Minimalista
             PetFinderTextField(
                 value = clave,
-                onValueChange = { viewModel.clave.value = it },
+                onValueChange = { viewModel.onClaveChange(it) },
                 placeholder = ".........",
                 visualTransformation = PasswordVisualTransformation(),
                 trailingIcon = {

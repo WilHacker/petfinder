@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import org.json.JSONObject
 
 object SocketManager {
-    private var socket: Socket? = null
+    @Volatile private var socket: Socket? = null
     private val gson = Gson()
 
     // Canales reactivos para que el MapViewModel escuche los movimientos en vivo
@@ -23,23 +23,21 @@ object SocketManager {
     private val _ownerLocationFlow = MutableSharedFlow<OwnerLocationUpdate>(extraBufferCapacity = 1)
     val ownerLocationFlow = _ownerLocationFlow.asSharedFlow()
 
-    // Alerta de zona — modal in-app (H19)
-    private val _zoneExitFlow = MutableSharedFlow<ZoneAlertEvent>(extraBufferCapacity = 1)
+    // Alerta de zona — buffer mayor para no perder alertas críticas
+    private val _zoneExitFlow = MutableSharedFlow<ZoneAlertEvent>(extraBufferCapacity = 8)
     val zoneExitFlow = _zoneExitFlow.asSharedFlow()
 
     fun connect(jwtToken: String, context: Context) {
-        if (socket?.connected() == true) return
+        // Siempre limpia el socket anterior — garantiza listeners frescos y token actualizado
+        disconnectClean()
 
         try {
-            // Namespace /realtime definido en tu API_DOCUMENTATION.md
             val options = IO.Options.builder()
                 .setTransports(arrayOf(io.socket.engineio.client.transports.WebSocket.NAME))
-                .setAuth(mapOf("token" to "Bearer $jwtToken")) // Handshake con Token
+                .setAuth(mapOf("token" to "Bearer $jwtToken"))
                 .build()
 
-            socket = IO.socket("https://backend-petfinder.onrender.com/realtime", options)
-
-            // --- LISTENERS DE EVENTOS ---
+            socket = IO.socket(AppConfig.WS_URL, options)
 
             socket?.on(Socket.EVENT_CONNECT) {
                 Log.d("SocketManager", "Conectado al ecosistema en tiempo real")
@@ -49,14 +47,12 @@ object SocketManager {
                 Log.e("SocketManager", "Error de conexión: ${args.firstOrNull()}")
             }
 
-            // Movimiento de mascotas
             socket?.on("pet:location-updated") { args ->
                 val data = args[0] as JSONObject
                 val update = gson.fromJson(data.toString(), PetLocationUpdate::class.java)
                 _petLocationFlow.tryEmit(update)
             }
 
-            // Movimiento de co-propietarios
             socket?.on("owner:location-updated") { args ->
                 val data = args[0] as JSONObject
                 val update = gson.fromJson(data.toString(), OwnerLocationUpdate::class.java)
@@ -75,14 +71,27 @@ object SocketManager {
 
         } catch (e: Exception) {
             Log.e("SocketManager", "Fallo al inicializar Socket: ${e.message}")
+            socket = null
         }
     }
 
     fun disconnect() {
-        socket?.disconnect()
-        socket?.off()
-        socket = null
-        Log.d("SocketManager", "Desconectado de WebSockets")
+        disconnectClean()
+    }
+
+    private fun disconnectClean() {
+        socket?.let { s ->
+            s.off(Socket.EVENT_CONNECT)
+            s.off(Socket.EVENT_CONNECT_ERROR)
+            s.off("pet:location-updated")
+            s.off("owner:location-updated")
+            s.off("pet:exited-zone")
+            s.disconnect()
+        }
+        if (socket != null) {
+            socket = null
+            Log.d("SocketManager", "Socket desconectado y listeners eliminados")
+        }
     }
 
     private fun dispararNotificacionPeligro(context: Context, alert: ZoneAlertEvent) {

@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.frontend.petfinder.core.presentation.components.DialogType
 import com.frontend.petfinder.core.presentation.components.PetFinderDialog
@@ -70,10 +71,10 @@ fun MedicalHistoryScreen(
     viewModel: MedicalViewModel = viewModel(),
     onNavigateBack: () -> Unit
 ) {
-    val records by viewModel.records.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val error by viewModel.error.collectAsState()
-    val formState by viewModel.formState.collectAsState()
+    val records by viewModel.records.collectAsStateWithLifecycle()
+    val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
+    val error by viewModel.error.collectAsStateWithLifecycle()
+    val formState by viewModel.formState.collectAsStateWithLifecycle()
 
     var showForm by remember { mutableStateOf(false) }
     var editingRecord by remember { mutableStateOf<MedicalRecordDto?>(null) }

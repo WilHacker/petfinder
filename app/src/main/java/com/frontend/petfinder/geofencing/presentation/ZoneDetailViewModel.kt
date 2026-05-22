@@ -1,23 +1,23 @@
 package com.frontend.petfinder.geofencing.presentation
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.frontend.petfinder.core.network.RetrofitClient
-import com.frontend.petfinder.geofencing.data.GeofencingApi
+import com.frontend.petfinder.core.network.toPrismaMessage
+import com.frontend.petfinder.geofencing.data.GeofencingRepository
 import com.frontend.petfinder.geofencing.data.UpdateZoneRequest
 import com.frontend.petfinder.geofencing.data.ZonePetsRequest
 import com.frontend.petfinder.geofencing.data.ZoneWithPetsDto
-import com.frontend.petfinder.pets.data.PetApi
+import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PetListItemDto
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class ZoneDetailViewModel : ViewModel() {
+private const val TAG = "ZoneDetailViewModel"
 
-    private val geoApi = RetrofitClient.instance.create(GeofencingApi::class.java)
-    private val petApi = RetrofitClient.instance.create(PetApi::class.java)
+class ZoneDetailViewModel : ViewModel() {
 
     sealed class ZoneState {
         object Loading : ZoneState()
@@ -44,84 +44,64 @@ class ZoneDetailViewModel : ViewModel() {
     fun loadZone(zonaId: Int) {
         viewModelScope.launch {
             _zoneState.value = ZoneState.Loading
-            try {
-                // GET /geofencing/zones devuelve mascotas completas con snake_case
-                val response = geoApi.getAllUserZones()
-                if (response.isSuccessful) {
-                    val zone = response.body()?.find { it.zonaId == zonaId }
-                    if (zone != null) {
-                        _zoneState.value = ZoneState.Success(zone)
-                    } else {
-                        _zoneState.value = ZoneState.Error("Zona no encontrada.")
-                    }
-                } else {
-                    _zoneState.value = ZoneState.Error("No se pudo cargar la zona.")
-                }
-            } catch (e: Exception) {
-                _zoneState.value = ZoneState.Error("Sin conexión. Verifica tu internet e intenta de nuevo.")
-            }
+            GeofencingRepository.getAllUserZones().fold(
+                onSuccess = { zones ->
+                    val zone = zones.find { it.zonaId == zonaId }
+                    _zoneState.value = if (zone != null) ZoneState.Success(zone)
+                    else ZoneState.Error("Zona no encontrada.")
+                },
+                onFailure = { _zoneState.value = ZoneState.Error("No se pudo cargar la zona.") }
+            )
         }
     }
 
     fun loadUserPets() {
         viewModelScope.launch {
-            try {
-                val response = petApi.getMyPets()
-                if (response.isSuccessful) {
-                    _userPets.value = response.body() ?: emptyList()
-                }
-            } catch (_: Exception) {}
+            PetRepository.getMyPets().onSuccess { _userPets.value = it }
+                .onFailure { e -> Log.w(TAG, "loadUserPets: ${e.message}") }
         }
     }
 
     fun toggleActive(zonaId: Int, currentState: Boolean) {
         viewModelScope.launch {
             _actionState.value = ActionState.Loading
-            try {
-                val response = geoApi.updateZone(zonaId, UpdateZoneRequest(estaActiva = !currentState))
-                if (response.isSuccessful) {
+            GeofencingRepository.updateZone(zonaId, UpdateZoneRequest(estaActiva = !currentState)).fold(
+                onSuccess = {
                     loadZone(zonaId)
                     _actionState.value = ActionState.Idle
-                } else {
-                    _actionState.value = ActionState.Error("No se pudo cambiar el estado.")
-                }
-            } catch (e: Exception) {
-                _actionState.value = ActionState.Error("Sin conexión.")
-            }
+                },
+                onFailure = { _actionState.value = ActionState.Error("No se pudo cambiar el estado.") }
+            )
         }
     }
 
     fun addPets(zonaId: Int, mascotaIds: List<String>) {
         viewModelScope.launch {
             _actionState.value = ActionState.Loading
-            try {
-                val response = geoApi.addPetsToZone(zonaId, ZonePetsRequest(mascotaIds))
-                if (response.isSuccessful) {
+            GeofencingRepository.addPetsToZone(zonaId, ZonePetsRequest(mascotaIds)).fold(
+                onSuccess = {
                     loadZone(zonaId)
                     _actionState.value = ActionState.Success
-                } else {
-                    _actionState.value = ActionState.Error("No se pudo agregar las mascotas.")
+                },
+                onFailure = { e ->
+                    _actionState.value = ActionState.Error(
+                        e.toPrismaMessage() ?: "No se pudo agregar las mascotas."
+                    )
                 }
-            } catch (e: Exception) {
-                _actionState.value = ActionState.Error("Sin conexión.")
-            }
+            )
         }
     }
 
     fun removePet(zonaId: Int, mascotaId: String) {
         viewModelScope.launch {
             _actionState.value = ActionState.Loading
-            try {
-                val response = geoApi.removePetsFromZone(zonaId, ZonePetsRequest(listOf(mascotaId)))
-                if (response.isSuccessful) {
+            GeofencingRepository.removePetsFromZone(zonaId, ZonePetsRequest(listOf(mascotaId))).fold(
+                onSuccess = {
                     loadZone(zonaId)
                     _actionState.value = ActionState.Idle
-                } else {
-                    _actionState.value = ActionState.Error("No se pudo quitar la mascota.")
-                }
-            } catch (e: Exception) {
-                _actionState.value = ActionState.Error("Sin conexión.")
-            }
+                },
+                onFailure = { _actionState.value = ActionState.Error("No se pudo quitar la mascota.") }
+            )
         }
     }
 
