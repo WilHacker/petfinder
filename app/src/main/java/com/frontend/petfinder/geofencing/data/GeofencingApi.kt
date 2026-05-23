@@ -9,6 +9,7 @@ import retrofit2.http.HTTP
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 // =============================================================================
 // DTOs COMPARTIDOS Y DEL MAPA PRINCIPAL (Snapshot)
@@ -22,22 +23,33 @@ data class GeometryDto(
     val coordinates: List<List<List<Double>>>? = emptyList()
 )
 
-data class UserMarkerDto(
+data class ColaboradorDto(
     val personaId: String,
     val nombre: String,
+    val apellidoPaterno: String? = null,
     val fotoUrl: String?,
-    val lat: Double,
-    val lng: Double
+    val ubicacion: PointDto
 )
 
-data class PetMarkerDto(
+data class DesaparecidaDto(
     val reporteId: Int,
     val mascotaId: String,
     val nombre: String,
     val tipo: String,
     val fotoUrl: String?,
-    val lat: Double,
-    val lng: Double
+    val ubicacion: PointDto,
+    val fechaPerdida: String? = null,
+    val recompensa: Double? = null
+)
+
+data class MyPetMarkerDto(
+    val mascotaId: String,
+    val nombre: String,
+    val estado: String,
+    val tipo: String,
+    val fotoUrl: String?,
+    val ubicacion: PointDto? = null,
+    val recompensa: Double? = null
 )
 
 data class ZonePetDto(
@@ -45,13 +57,7 @@ data class ZonePetDto(
     val nombre: String,
     val estado: String,
     val fotoUrl: String?,
-    // ¡NUEVO! Lee la ubicación si existe, si es null no pasa nada
     val ubicacion: PointDto? = null
-)
-
-data class MarkersDto(
-    val usuariosCompartidos: List<UserMarkerDto>,
-    val desaparecidas: List<PetMarkerDto>
 )
 
 data class LostPetMarkerDto(
@@ -59,13 +65,15 @@ data class LostPetMarkerDto(
     @SerializedName("nombre") val nombre: String,
     @SerializedName("tipo") val tipo: String,
     @SerializedName("fotoUrl") val fotoUrl: String?,
-    @SerializedName("lat") val lat: Double,
-    @SerializedName("lng") val lng: Double,
-    @SerializedName("fechaPerdida") val fechaPerdida: String?
+    @SerializedName("ubicacion") val ubicacion: PointDto,
+    @SerializedName("fechaPerdida") val fechaPerdida: String? = null,
+    @SerializedName("recompensa") val recompensa: Double? = null
 )
 
 data class MapSnapshotResponse(
-    val marcadores: MarkersDto,
+    val misMascotas: List<MyPetMarkerDto>,
+    val colaboradores: List<ColaboradorDto>,
+    val desaparecidas: List<DesaparecidaDto>,
     val zonas: List<ZoneDto>
 )
 
@@ -78,11 +86,12 @@ data class ZoneDto(
     val zonaId: Int,
     val nombre: String? = null,
     val nombreZona: String? = null,
-    val tipo: String? = null, // Nullable para mayor seguridad
+    val tipo: String? = null,
     val centro: PointDto? = null,
     val radioMetros: Double? = null,
     val geometria: GeometryDto? = null,
     val estaActiva: Boolean? = null,
+    val estado: String? = null,
     val mascotas: List<ZonePetDto>? = null,
     val mascotaIds: List<String>? = null
 )
@@ -149,10 +158,14 @@ interface GeofencingApi {
     // 1. MAPA PRINCIPAL
     // -------------------------------------------------------------------------
     @GET("map/snapshot")
-    suspend fun getMapSnapshot(): Response<MapSnapshotResponse>
+    suspend fun getMapSnapshot(
+        @Query("tipoId") tipoId: Int? = null
+    ): Response<MapSnapshotResponse>
 
     @GET("map/public/lost-pets")
-    suspend fun getPublicLostPets(): Response<List<LostPetMarkerDto>>
+    suspend fun getPublicLostPets(
+        @Query("tipoId") tipoId: Int? = null
+    ): Response<List<LostPetMarkerDto>>
 
     // -------------------------------------------------------------------------
     // 2. GESTIÓN DE GEOVALLAS (Zonas Seguras)

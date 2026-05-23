@@ -46,7 +46,10 @@ interface PetApi {
     // --- QR ---
 
     @GET("pets/{id}/qr")
-    suspend fun getPetQrCode(@Path("id") petId: String): Response<ResponseBody>
+    suspend fun getPetQrCode(
+        @Path("id") petId: String,
+        @Query("size") size: Int? = null
+    ): Response<ResponseBody>
 
     @GET("qr/{token}")
     suspend fun getPublicPetCard(@Path("token") token: String): Response<PublicPetCardDto>

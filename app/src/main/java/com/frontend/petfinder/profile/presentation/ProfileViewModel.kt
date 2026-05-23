@@ -8,6 +8,9 @@ import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.auth.data.AuthRepository
 import com.frontend.petfinder.core.network.SocketManager
 import com.frontend.petfinder.profile.data.ProfileRepository
+import com.frontend.petfinder.profile.data.dto.ContactoDto
+import com.frontend.petfinder.profile.data.dto.CreateContactRequest
+import com.frontend.petfinder.profile.data.dto.UpdateContactRequest
 import com.frontend.petfinder.profile.data.dto.UpdateProfileRequest
 import com.frontend.petfinder.profile.data.dto.UserProfileDto
 import kotlinx.coroutines.Dispatchers
@@ -50,12 +53,58 @@ class ProfileViewModel : ViewModel() {
     private val _apellidoMaterno = MutableStateFlow("")
     val apellidoMaterno: StateFlow<String> = _apellidoMaterno.asStateFlow()
 
+    private val _contacts = MutableStateFlow<List<ContactoDto>>(emptyList())
+    val contacts: StateFlow<List<ContactoDto>> = _contacts.asStateFlow()
+
+    private val _contactsLoading = MutableStateFlow(false)
+    val contactsLoading: StateFlow<Boolean> = _contactsLoading.asStateFlow()
+
+    private val _contactError = MutableStateFlow<String?>(null)
+    val contactError: StateFlow<String?> = _contactError.asStateFlow()
+
     fun onNombreChange(v: String) { _nombre.value = v }
     fun onApellidoPaternoChange(v: String) { _apellidoPaterno.value = v }
     fun onApellidoMaternoChange(v: String) { _apellidoMaterno.value = v }
 
     init {
         loadProfile()
+        loadContacts()
+    }
+
+    fun loadContacts() {
+        viewModelScope.launch {
+            _contactsLoading.value = true
+            ProfileRepository.getEmergencyContacts().fold(
+                onSuccess = { _contacts.value = it },
+                onFailure = {}
+            )
+            _contactsLoading.value = false
+        }
+    }
+
+    fun addEmergencyContact(tipo: String, valor: String) {
+        if (valor.isBlank()) { _contactError.value = "El valor no puede estar vacío"; return }
+        viewModelScope.launch {
+            _contactsLoading.value = true
+            ProfileRepository.addContact(CreateContactRequest(tipo = tipo, valor = valor.trim(), esPrincipal = _contacts.value.isEmpty(), esEmergencia = true)).fold(
+                onSuccess = { loadContacts() },
+                onFailure = { _contactError.value = "No se pudo agregar el contacto" }
+            )
+            _contactsLoading.value = false
+        }
+    }
+
+    fun deleteContact(contactoId: Int) {
+        viewModelScope.launch {
+            ProfileRepository.deleteContact(contactoId).fold(
+                onSuccess = { _contacts.value = _contacts.value.filter { it.contactoId != contactoId } },
+                onFailure = { _contactError.value = "No se pudo eliminar el contacto" }
+            )
+        }
+    }
+
+    fun clearContactError() {
+        _contactError.value = null
     }
 
     fun loadProfile() {

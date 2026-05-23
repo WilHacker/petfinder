@@ -105,6 +105,19 @@ class ZoneDetailViewModel : ViewModel() {
         }
     }
 
+    fun updateRadius(zonaId: Int, newRadius: Double) {
+        viewModelScope.launch {
+            _actionState.value = ActionState.Loading
+            GeofencingRepository.updateZone(zonaId, UpdateZoneRequest(radioMetros = newRadius)).fold(
+                onSuccess = {
+                    loadZone(zonaId)
+                    _actionState.value = ActionState.Success
+                },
+                onFailure = { _actionState.value = ActionState.Error("No se pudo actualizar el radio.") }
+            )
+        }
+    }
+
     fun resetAction() {
         _actionState.value = ActionState.Idle
     }

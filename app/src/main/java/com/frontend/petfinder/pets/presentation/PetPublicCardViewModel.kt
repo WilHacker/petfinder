@@ -8,6 +8,9 @@ import androidx.lifecycle.viewModelScope
 import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PublicPetCardDto
 import com.frontend.petfinder.pets.data.dto.QrScanRequest
+import com.frontend.petfinder.sightings.data.CreateSightingRequest
+import com.frontend.petfinder.sightings.data.SightingDto
+import com.frontend.petfinder.sightings.data.SightingsRepository
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -34,11 +37,25 @@ class PetPublicCardViewModel : ViewModel() {
     private val _scanRegistered = MutableStateFlow(false)
     val scanRegistered: StateFlow<Boolean> = _scanRegistered.asStateFlow()
 
+    private val _sightings = MutableStateFlow<List<SightingDto>>(emptyList())
+    val sightings: StateFlow<List<SightingDto>> = _sightings.asStateFlow()
+
+    private val _sightingSubmitting = MutableStateFlow(false)
+    val sightingSubmitting: StateFlow<Boolean> = _sightingSubmitting.asStateFlow()
+
+    private val _sightingSuccess = MutableStateFlow(false)
+    val sightingSuccess: StateFlow<Boolean> = _sightingSuccess.asStateFlow()
+
     fun loadCard(token: String) {
         viewModelScope.launch {
             _cardState.value = CardState.Loading
             PetRepository.getPublicPetCard(token).fold(
-                onSuccess = { _cardState.value = CardState.Success(it) },
+                onSuccess = { card ->
+                    _cardState.value = CardState.Success(card)
+                    if (card.estaExtraviada) {
+                        SightingsRepository.getSightings(card.mascotaId).onSuccess { _sightings.value = it }
+                    }
+                },
                 onFailure = { e ->
                     val code = (e as? HttpException)?.code() ?: -1
                     _cardState.value = CardState.Error(when (code) {
@@ -49,6 +66,22 @@ class PetPublicCardViewModel : ViewModel() {
             )
         }
     }
+
+    fun reportSighting(petId: String, descripcion: String, lat: Double? = null, lng: Double? = null) {
+        viewModelScope.launch {
+            _sightingSubmitting.value = true
+            SightingsRepository.reportSighting(petId, CreateSightingRequest(descripcion = descripcion.ifBlank { null }, lat = lat, lng = lng)).fold(
+                onSuccess = {
+                    _sightings.value = listOf(it) + _sightings.value
+                    _sightingSuccess.value = true
+                },
+                onFailure = {}
+            )
+            _sightingSubmitting.value = false
+        }
+    }
+
+    fun clearSightingSuccess() { _sightingSuccess.value = false }
 
     @SuppressLint("MissingPermission")
     fun registerScan(token: String, context: Context) {

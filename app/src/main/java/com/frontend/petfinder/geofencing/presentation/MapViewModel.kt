@@ -14,11 +14,13 @@ import com.frontend.petfinder.geofencing.data.*
 import com.frontend.petfinder.geofencing.data.GeofencingRepository
 import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PetListItemDto
+import com.frontend.petfinder.pets.data.dto.TipoMascotaDto
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -69,6 +71,17 @@ class MapViewModel : ViewModel() {
         _showLostPets.value = !_showLostPets.value
     }
 
+    private val _tiposMascota = MutableStateFlow<List<TipoMascotaDto>>(emptyList())
+    val tiposMascota: StateFlow<List<TipoMascotaDto>> = _tiposMascota.asStateFlow()
+
+    private val _speciesFilter = MutableStateFlow<Int?>(null)
+    val speciesFilter: StateFlow<Int?> = _speciesFilter.asStateFlow()
+
+    fun setSpeciesFilter(tipoId: Int?) {
+        _speciesFilter.value = tipoId
+        cargarDatosDelMapa()
+    }
+
     private val _zoneExitAlert = MutableStateFlow<ZoneExitAlertUi?>(null)
     val zoneExitAlert: StateFlow<ZoneExitAlertUi?> = _zoneExitAlert.asStateFlow()
 
@@ -91,6 +104,13 @@ class MapViewModel : ViewModel() {
     init {
         cargarDatosDelMapa()
         escucharEventosEnTiempoReal()
+        loadTiposMascota()
+    }
+
+    private fun loadTiposMascota() {
+        viewModelScope.launch {
+            PetRepository.getTiposMascota().onSuccess { _tiposMascota.value = it }
+        }
     }
 
     private fun escucharEventosEnTiempoReal() {
@@ -99,16 +119,50 @@ class MapViewModel : ViewModel() {
                 _livePetLocations.update { it + (update.mascotaId to LatLng(update.lat, update.lng)) }
             }
         }
+
+        viewModelScope.launch {
+            SocketManager.petStatusFlow.collect { update ->
+                if (_snapshot.value == null) _snapshot.first { it != null }
+                _snapshot.update { current ->
+                    current?.copy(
+                        misMascotas = current.misMascotas.map { pet ->
+                            if (pet.mascotaId == update.mascotaId) pet.copy(estado = update.estado)
+                            else pet
+                        }
+                    )
+                }
+                GeofencingRepository.getMapSnapshot(_speciesFilter.value).fold(
+                    onSuccess = { _snapshot.value = it },
+                    onFailure = { e -> Log.w(TAG, "petStatusFlow refresh: ${e.message}") }
+                )
+            }
+        }
+
         viewModelScope.launch {
             SocketManager.ownerLocationFlow.collect { update ->
                 _liveOwnerLocations.update { it + (update.personaId to LatLng(update.lat, update.lng)) }
             }
         }
+
+        viewModelScope.launch {
+            SocketManager.petProfileFlow.collect { update ->
+                _snapshot.update { current ->
+                    current?.copy(
+                        misMascotas = current.misMascotas.map { pet ->
+                            if (pet.mascotaId == update.mascotaId) pet.copy(
+                                nombre = update.nombre ?: pet.nombre,
+                                estado = update.estado ?: pet.estado,
+                                fotoUrl = update.fotoUrl ?: pet.fotoUrl
+                            ) else pet
+                        }
+                    )
+                }
+            }
+        }
         viewModelScope.launch {
             SocketManager.zoneExitFlow.collect { event ->
                 val petName = _pets.value.find { it.mascotaId == event.mascotaId }?.nombre
-                    ?: _snapshot.value?.zonas
-                        ?.flatMap { it.mascotas ?: emptyList() }
+                    ?: _snapshot.value?.misMascotas
                         ?.find { it.mascotaId == event.mascotaId }?.nombre
                     ?: "Tu mascota"
                 val zoneName = _snapshot.value?.zonas
@@ -128,9 +182,10 @@ class MapViewModel : ViewModel() {
 
     fun cargarDatosDelMapa() {
         viewModelScope.launch {
-            val snapshotJob = async { GeofencingRepository.getMapSnapshot() }
+            val filter = _speciesFilter.value
+            val snapshotJob = async { GeofencingRepository.getMapSnapshot(filter) }
             val petsJob     = async { PetRepository.getMyPets() }
-            val lostPetsJob = async { GeofencingRepository.getPublicLostPets() }
+            val lostPetsJob = async { GeofencingRepository.getPublicLostPets(filter) }
 
             snapshotJob.await().fold(
                 onSuccess = { _snapshot.value = it },

@@ -2,6 +2,7 @@ package com.frontend.petfinder.pets.presentation
 
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,6 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,10 +34,10 @@ import coil.compose.AsyncImage
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.PrimaryOrangeLight
 import com.frontend.petfinder.pets.data.dto.ContactoPublicoDto
-import com.frontend.petfinder.pets.data.dto.FichaMedicaPublicaDto
 import com.frontend.petfinder.pets.data.dto.PropietarioPublicoDto
 import com.frontend.petfinder.pets.data.dto.PublicPetCardDto
 import com.frontend.petfinder.pets.data.dto.RegistroMedicoPublicoDto
+import com.frontend.petfinder.sightings.data.SightingDto
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -47,6 +50,16 @@ fun PetPublicCardScreen(
 ) {
     val context = LocalContext.current
     val cardState by viewModel.cardState.collectAsStateWithLifecycle()
+    val sightings by viewModel.sightings.collectAsStateWithLifecycle()
+    val sightingSubmitting by viewModel.sightingSubmitting.collectAsStateWithLifecycle()
+    val sightingSuccess by viewModel.sightingSuccess.collectAsStateWithLifecycle()
+
+    LaunchedEffect(sightingSuccess) {
+        if (sightingSuccess) {
+            Toast.makeText(context, "¡Avistamiento reportado! Gracias por ayudar.", Toast.LENGTH_SHORT).show()
+            viewModel.clearSightingSuccess()
+        }
+    }
 
     LaunchedEffect(token) {
         viewModel.loadCard(token)
@@ -109,6 +122,8 @@ fun PetPublicCardScreen(
             is PetPublicCardViewModel.CardState.Success -> {
                 PublicCardContent(
                     card = state.card,
+                    sightings = sightings,
+                    sightingSubmitting = sightingSubmitting,
                     onNavigateBack = onNavigateBack,
                     onContactClick = { contacto ->
                         val intent = when (contacto.tipo.lowercase()) {
@@ -119,7 +134,8 @@ fun PetPublicCardScreen(
                             else -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:${contacto.valor}"))
                         }
                         context.startActivity(intent)
-                    }
+                    },
+                    onReportSighting = { desc -> viewModel.reportSighting(state.card.mascotaId, desc) }
                 )
             }
         }
@@ -129,8 +145,11 @@ fun PetPublicCardScreen(
 @Composable
 private fun PublicCardContent(
     card: PublicPetCardDto,
+    sightings: List<SightingDto>,
+    sightingSubmitting: Boolean,
     onNavigateBack: () -> Unit,
-    onContactClick: (ContactoPublicoDto) -> Unit
+    onContactClick: (ContactoPublicoDto) -> Unit,
+    onReportSighting: (String) -> Unit
 ) {
     val primaryPhoto = card.fotos?.firstOrNull { it.esPrincipal } ?: card.fotos?.firstOrNull()
     val isLost = card.estaExtraviada
@@ -373,6 +392,108 @@ private fun PublicCardContent(
                 }
             }
 
+            // Recompensa
+            if (isLost) {
+                card.recompensa?.let { recompensa ->
+                    if (recompensa > 0) {
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = Color(0xFFFFF8E1)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = "🏆", fontSize = 28.sp)
+                                Column {
+                                    Text(
+                                        text = "Recompensa ofrecida",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFE65100)
+                                    )
+                                    Text(
+                                        text = "Bs. %.0f".format(recompensa),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFBF360C)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Avistamientos
+            if (isLost || sightings.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(28.dp))
+                Text(
+                    text = "Avistamientos",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                var sightingText by remember { mutableStateOf("") }
+                OutlinedTextField(
+                    value = sightingText,
+                    onValueChange = { sightingText = it },
+                    placeholder = { Text("¿Lo viste? Describe dónde y cuándo...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    maxLines = 3,
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                if (sightingText.isNotBlank() && !sightingSubmitting) {
+                                    onReportSighting(sightingText)
+                                    sightingText = ""
+                                }
+                            },
+                            enabled = sightingText.isNotBlank() && !sightingSubmitting
+                        ) {
+                            if (sightingSubmitting) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Default.Send, contentDescription = "Reportar", tint = PrimaryOrange)
+                            }
+                        }
+                    }
+                )
+
+                if (sightings.isEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Sé el primero en reportar un avistamiento",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                } else {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    sightings.forEach { sighting ->
+                        PublicSightingRow(sighting)
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(48.dp))
 
             // Footer branding
@@ -543,6 +664,61 @@ private fun PublicMedRecord(registro: RegistroMedicoPublicoDto) {
             if (fechaLegible != null || registro.veterinario != null) {
                 Text(
                     text = listOfNotNull(fechaLegible, registro.veterinario?.let { "· $it" }).joinToString(" "),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PublicSightingRow(sighting: SightingDto) {
+    val fechaLegible = try {
+        val input = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
+        val output = SimpleDateFormat("d MMM · HH:mm", Locale("es"))
+        output.format(input.parse(sighting.creadoEl)!!)
+    } catch (_: Exception) { sighting.creadoEl.take(10) }
+
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            sighting.fotoEvidenciaUrl?.let { url ->
+                AsyncImage(
+                    model = url,
+                    contentDescription = "Foto del avistamiento",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+            sighting.descripcion?.takeIf { it.isNotBlank() }?.let { desc ->
+                Text(
+                    text = desc,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = sighting.reportadoPor?.nombre ?: "Anónimo",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = fechaLegible,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

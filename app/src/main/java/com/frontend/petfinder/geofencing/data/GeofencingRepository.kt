@@ -5,13 +5,13 @@ import retrofit2.HttpException
 
 object GeofencingRepository {
 
-    suspend fun getMapSnapshot(): Result<MapSnapshotResponse> = runCatching {
-        val r = ApiServices.geo.getMapSnapshot()
+    suspend fun getMapSnapshot(tipoId: Int? = null): Result<MapSnapshotResponse> = runCatching {
+        val r = ApiServices.geo.getMapSnapshot(tipoId)
         if (r.isSuccessful) r.body()!! else throw HttpException(r)
     }
 
-    suspend fun getPublicLostPets(): Result<List<LostPetMarkerDto>> = runCatching {
-        val r = ApiServices.geo.getPublicLostPets()
+    suspend fun getPublicLostPets(tipoId: Int? = null): Result<List<LostPetMarkerDto>> = runCatching {
+        val r = ApiServices.geo.getPublicLostPets(tipoId)
         if (r.isSuccessful) r.body() ?: emptyList() else throw HttpException(r)
     }
 

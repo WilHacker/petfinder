@@ -16,6 +16,7 @@ import com.frontend.petfinder.auth.data.AuthRepository
 import com.frontend.petfinder.core.network.SocketManager
 import com.frontend.petfinder.core.navigation.PetFinderNavGraph
 import com.frontend.petfinder.core.theme.PetFinderTheme
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private const val TAG = "MainActivity"
@@ -27,6 +28,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Reconectar socket si la app arranca con sesión ya guardada.
+        // Usamos DataStore directamente porque preloadCache() es asíncrono y
+        // cachedAccessToken puede ser null en este punto aunque haya sesión guardada.
+        lifecycleScope.launch {
+            val token = PetFinderApp.sessionManager.getAccessToken().first()
+            if (token != null) {
+                SocketManager.connect(token, this@MainActivity)
+            }
+        }
+
         setContent {
             PetFinderTheme {
                 Surface(

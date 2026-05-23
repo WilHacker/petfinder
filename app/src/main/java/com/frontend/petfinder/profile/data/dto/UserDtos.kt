@@ -24,7 +24,15 @@ data class ContactoDto(
     @SerializedName("contactoId") val contactoId: Int,
     @SerializedName("tipo") val tipo: String, // WhatsApp, Celular, Fijo, Telegram
     @SerializedName("valor") val valor: String,
-    @SerializedName("esPrincipal") val esPrincipal: Boolean
+    @SerializedName("esPrincipal") val esPrincipal: Boolean,
+    @SerializedName("esEmergencia") val esEmergencia: Boolean = false
+)
+
+data class UpdateContactRequest(
+    @SerializedName("tipo") val tipo: String? = null,
+    @SerializedName("valor") val valor: String? = null,
+    @SerializedName("esPrincipal") val esPrincipal: Boolean? = null,
+    @SerializedName("esEmergencia") val esEmergencia: Boolean? = null
 )
 
 data class UpdateProfileRequest(
@@ -38,7 +46,8 @@ data class UpdateProfileRequest(
 data class CreateContactRequest(
     @SerializedName("tipo") val tipo: String,
     @SerializedName("valor") val valor: String,
-    @SerializedName("esPrincipal") val esPrincipal: Boolean
+    @SerializedName("esPrincipal") val esPrincipal: Boolean,
+    @SerializedName("esEmergencia") val esEmergencia: Boolean = false
 )
 
 data class LocationRequest(

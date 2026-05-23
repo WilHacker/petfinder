@@ -101,6 +101,7 @@ data class PublicPetCardDto(
     @SerializedName("rasgosParticulares") val rasgosParticulares: String?,
     @SerializedName("estado") val estado: String,
     @SerializedName("estaExtraviada") val estaExtraviada: Boolean,
+    @SerializedName("recompensa") val recompensa: Double? = null,
     @SerializedName("fotos") val fotos: List<FotoPublicaDto>?,
     @SerializedName("fichaMedica") val fichaMedica: FichaMedicaPublicaDto?,
     @SerializedName("registrosMedicos") val registrosMedicos: List<RegistroMedicoPublicoDto>?,

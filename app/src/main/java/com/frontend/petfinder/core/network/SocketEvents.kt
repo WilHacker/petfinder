@@ -27,3 +27,26 @@ data class ZoneAlertEvent(
     @SerializedName("fechaHora") val fechaHora: String,
     @SerializedName("duracionMinutos") val duracionMinutos: Int? = null
 )
+
+// DTO para "pet:status-changed"
+data class PetStatusUpdate(
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("estado") val estado: String
+)
+
+// DTO para "owner:profile-updated"
+data class OwnerProfileUpdate(
+    @SerializedName("personaId") val personaId: String,
+    @SerializedName("fotoPerfilUrl") val fotoPerfilUrl: String?,
+    @SerializedName("fechaActualizacion") val fechaActualizacion: String? = null
+)
+
+// DTO para "pet:profile-updated"
+data class PetProfileUpdate(
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("nombre") val nombre: String? = null,
+    @SerializedName("estado") val estado: String? = null,
+    @SerializedName("fotoUrl") val fotoUrl: String? = null,
+    @SerializedName("fechaActualizacion") val fechaActualizacion: String? = null
+)

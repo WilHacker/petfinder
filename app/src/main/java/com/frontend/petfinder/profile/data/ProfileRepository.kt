@@ -31,4 +31,24 @@ object ProfileRepository {
         val r = ApiServices.user.updateLocation(LocationRequest(lat, lng))
         if (r.isSuccessful) Unit else throw HttpException(r)
     }
+
+    suspend fun getEmergencyContacts(): Result<List<ContactoDto>> = runCatching {
+        val r = ApiServices.user.getEmergencyContacts()
+        if (r.isSuccessful) r.body() ?: emptyList() else throw HttpException(r)
+    }
+
+    suspend fun addContact(request: CreateContactRequest): Result<ContactoDto> = runCatching {
+        val r = ApiServices.user.addContact(request)
+        if (r.isSuccessful) r.body()!! else throw HttpException(r)
+    }
+
+    suspend fun updateContact(id: Int, request: UpdateContactRequest): Result<ContactoDto> = runCatching {
+        val r = ApiServices.user.updateContact(id, request)
+        if (r.isSuccessful) r.body()!! else throw HttpException(r)
+    }
+
+    suspend fun deleteContact(id: Int): Result<Unit> = runCatching {
+        val r = ApiServices.user.deleteContact(id)
+        if (r.isSuccessful) Unit else throw HttpException(r)
+    }
 }

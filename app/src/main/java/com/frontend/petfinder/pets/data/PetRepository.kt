@@ -6,6 +6,8 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.HttpException
 
+
+
 object PetRepository {
 
     suspend fun getMyPets(): Result<List<PetListItemDto>> = runCatching {
@@ -13,8 +15,8 @@ object PetRepository {
         if (r.isSuccessful) r.body() ?: emptyList() else throw HttpException(r)
     }
 
-    suspend fun getPetQrCode(petId: String): Result<String> = runCatching {
-        val r = ApiServices.pets.getPetQrCode(petId)
+    suspend fun getPetQrCode(petId: String, size: Int? = null): Result<String> = runCatching {
+        val r = ApiServices.pets.getPetQrCode(petId, size)
         if (r.isSuccessful) r.body()?.string()?.replace("\"", "")
             ?: throw IllegalStateException("QR body vacío")
         else throw HttpException(r)
@@ -93,5 +95,15 @@ object PetRepository {
     suspend fun deleteMedicalRecord(petId: String, registroId: Int): Result<Unit> = runCatching {
         ApiServices.pets.deleteMedicalRecord(petId, registroId)
         Unit
+    }
+
+    suspend fun addOwner(petId: String, personaId: String, tipoRelacion: String): Result<PetOwnerRelationDto> = runCatching {
+        val r = ApiServices.pets.addPetOwner(petId, AddOwnerRequest(personaId = personaId, tipoRelacion = tipoRelacion))
+        if (r.isSuccessful) r.body()!! else throw HttpException(r)
+    }
+
+    suspend fun removeOwner(petId: String, personaId: String): Result<Unit> = runCatching {
+        val r = ApiServices.pets.removePetOwner(petId, personaId)
+        if (r.isSuccessful) Unit else throw HttpException(r)
     }
 }

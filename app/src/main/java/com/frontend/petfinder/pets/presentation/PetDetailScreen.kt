@@ -3,6 +3,7 @@ package com.frontend.petfinder.pets.presentation
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +14,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PersonRemove
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,6 +59,7 @@ private sealed class PetDetailModal {
     object QrDialog : PetDetailModal()
     object LostConfirm : PetDetailModal()
     object LocationSheet : PetDetailModal()
+    object AddOwnerSheet : PetDetailModal()
 }
 
 private fun estadoLabel(estado: String) = when (estado) {
@@ -103,6 +110,13 @@ fun PetDetailScreen(
     val reports by viewModel.reports.collectAsStateWithLifecycle()
     val locationUpdating by viewModel.locationUpdating.collectAsStateWithLifecycle()
     val locationError by viewModel.locationError.collectAsStateWithLifecycle()
+    val qrDownloading by viewModel.qrDownloading.collectAsStateWithLifecycle()
+    val qrDownloadResult by viewModel.qrDownloadResult.collectAsStateWithLifecycle()
+    val ownerError by viewModel.ownerError.collectAsStateWithLifecycle()
+    val ownerLoading by viewModel.ownerLoading.collectAsStateWithLifecycle()
+    val sightings by viewModel.sightings.collectAsStateWithLifecycle()
+    val sightingError by viewModel.sightingError.collectAsStateWithLifecycle()
+    val sightingSubmitting by viewModel.sightingSubmitting.collectAsStateWithLifecycle()
 
     var activeModal by remember { mutableStateOf<PetDetailModal>(PetDetailModal.None) }
     var locationSuccess by remember { mutableStateOf(false) }
@@ -111,6 +125,27 @@ fun PetDetailScreen(
 
     LaunchedEffect(locationError) {
         locationError?.let { viewModel.clearLocationError() }
+    }
+
+    LaunchedEffect(ownerError) {
+        ownerError?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearOwnerError()
+        }
+    }
+
+    LaunchedEffect(sightingError) {
+        sightingError?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearSightingError()
+        }
+    }
+
+    LaunchedEffect(qrDownloadResult) {
+        qrDownloadResult?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearQrDownloadResult()
+        }
     }
 
     // ── Diálogo confirmación "extraviada" ──────────────────────────────────
@@ -131,6 +166,7 @@ fun PetDetailScreen(
 
     // ── Diálogo QR ────────────────────────────────────────────────────────
     if (activeModal is PetDetailModal.QrDialog) {
+        val petNameForQr = (state as? PetDetailViewModel.DetailState.Success)?.pet?.nombre ?: "mascota"
         PetFinderDialog(
             type = DialogType.INFO,
             title = "Placa QR Activa",
@@ -153,7 +189,24 @@ fun PetDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        else -> Base64Image(base64String = qrBase64!!, modifier = Modifier.size(220.dp))
+                        else -> {
+                            Base64Image(base64String = qrBase64!!, modifier = Modifier.size(220.dp))
+                            Spacer(Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = { viewModel.downloadQr(context, mascotaId, petNameForQr) },
+                                enabled = !qrDownloading,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (qrDownloading) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = PrimaryOrange)
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Icon(Icons.Default.SaveAlt, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Descargar para impresión (800px)")
+                            }
+                        }
                     }
                 }
             }
@@ -300,6 +353,82 @@ fun PetDetailScreen(
         }
     }
 
+    // ── Bottom sheet: agregar co-propietario ──────────────────────────────
+    if (activeModal is PetDetailModal.AddOwnerSheet) {
+        val tiposRelacion = listOf("Cuidador", "Tutor", "Familiar")
+        var personaIdInput by remember { mutableStateOf("") }
+        var selectedTipo by remember { mutableStateOf(tiposRelacion[0]) }
+        var tipoExpanded by remember { mutableStateOf(false) }
+
+        ModalBottomSheet(
+            onDismissRequest = { activeModal = PetDetailModal.None; personaIdInput = "" },
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = MaterialTheme.colorScheme.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 40.dp)
+            ) {
+                Text("Agregar cuidador", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Ingresa el ID de persona del usuario que quieres agregar como cuidador.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(20.dp))
+
+                OutlinedTextField(
+                    value = personaIdInput,
+                    onValueChange = { personaIdInput = it },
+                    label = { Text("ID de persona (UUID)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+                Spacer(Modifier.height(12.dp))
+
+                ExposedDropdownMenuBox(expanded = tipoExpanded, onExpandedChange = { tipoExpanded = !tipoExpanded }) {
+                    OutlinedTextField(
+                        value = selectedTipo,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Tipo de relación") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = tipoExpanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    ExposedDropdownMenu(expanded = tipoExpanded, onDismissRequest = { tipoExpanded = false }) {
+                        tiposRelacion.forEach { tipo ->
+                            DropdownMenuItem(text = { Text(tipo) }, onClick = { selectedTipo = tipo; tipoExpanded = false })
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+                Button(
+                    onClick = {
+                        viewModel.addOwner(mascotaId, personaIdInput, selectedTipo)
+                        activeModal = PetDetailModal.None
+                        personaIdInput = ""
+                    },
+                    enabled = personaIdInput.isNotBlank() && !ownerLoading,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
+                ) {
+                    if (ownerLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Text("Agregar cuidador", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
     // ── Contenido principal ───────────────────────────────────────────────
     when (val s = state) {
         is PetDetailViewModel.DetailState.Loading -> {
@@ -333,6 +462,8 @@ fun PetDetailScreen(
                 statusChanging = statusChanging,
                 scans = scans,
                 reports = reports,
+                sightings = sightings,
+                sightingSubmitting = sightingSubmitting,
                 onBack = onNavigateBack,
                 onShowStatusSheet = { activeModal = PetDetailModal.StatusSheet },
                 onShowQr = {
@@ -340,7 +471,11 @@ fun PetDetailScreen(
                     viewModel.loadQr(mascotaId)
                 },
                 onNavigateToMedical = onNavigateToMedical,
-                onShowLocationSheet = { activeModal = PetDetailModal.LocationSheet }
+                onShowLocationSheet = { activeModal = PetDetailModal.LocationSheet },
+                onAddOwner = { activeModal = PetDetailModal.AddOwnerSheet },
+                onRemoveOwner = { personaId -> viewModel.removeOwner(mascotaId, personaId) },
+                onReportSighting = { desc -> viewModel.reportSighting(mascotaId, desc) },
+                onSendThanks = { id, msg -> viewModel.sendThanks(id, msg) }
             )
         }
     }
@@ -352,11 +487,17 @@ private fun PetDetailContent(
     statusChanging: Boolean,
     scans: List<PetScanDto>,
     reports: List<PetReportDto>,
+    sightings: List<com.frontend.petfinder.sightings.data.SightingDto> = emptyList(),
+    sightingSubmitting: Boolean = false,
     onBack: () -> Unit,
     onShowStatusSheet: () -> Unit,
     onShowQr: () -> Unit,
     onNavigateToMedical: () -> Unit,
-    onShowLocationSheet: () -> Unit
+    onShowLocationSheet: () -> Unit,
+    onAddOwner: () -> Unit = {},
+    onRemoveOwner: (String) -> Unit = {},
+    onReportSighting: (String) -> Unit = {},
+    onSendThanks: (Int, String?) -> Unit = { _, _ -> }
 ) {
     val scrollState = rememberScrollState()
     val imageUrl = pet.fotos?.find { it.esPrincipal }?.fotoUrl
@@ -561,14 +702,32 @@ private fun PetDetailContent(
             Spacer(Modifier.height(24.dp))
 
             // ── Sección: Dueños y cuidadores ─────────────────────────────
-            if (pet.propietarios.isNotEmpty()) {
-                PetSectionHeader("Dueños y cuidadores")
-                pet.propietarios.forEach { propietario ->
-                    OwnerRow(propietario)
-                    Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    "Dueños y cuidadores",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryOrange
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Color(0xFFF0F0F0), thickness = 1.5.dp)
+                IconButton(onClick = onAddOwner, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.PersonAdd, contentDescription = "Agregar cuidador", tint = PrimaryOrange, modifier = Modifier.size(18.dp))
                 }
-                Spacer(Modifier.height(8.dp))
             }
+            pet.propietarios.forEach { propietario ->
+                OwnerRow(
+                    propietario = propietario,
+                    onRemove = if (propietario.tipoRelacion != "Dueno_Principal") {
+                        { onRemoveOwner(propietario.personaId) }
+                    } else null
+                )
+                Spacer(Modifier.height(10.dp))
+            }
+            Spacer(Modifier.height(8.dp))
 
             // ── Sección: Acciones rápidas ─────────────────────────────────
             PetSectionHeader("Acciones")
@@ -617,6 +776,45 @@ private fun PetDetailContent(
                     Spacer(Modifier.height(8.dp))
                 }
                 Spacer(Modifier.height(12.dp))
+            }
+
+            // ── Sección: Avistamientos ───────────────────────────────────
+            if (estado == "extraviada" || sightings.isNotEmpty()) {
+                var sightingText by remember { mutableStateOf("") }
+                PetSectionHeader("Avistamientos de la comunidad")
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = sightingText,
+                        onValueChange = { sightingText = it },
+                        placeholder = { Text("¿Lo viste? Describe dónde y cuándo...") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        maxLines = 2,
+                        textStyle = MaterialTheme.typography.bodySmall
+                    )
+                    IconButton(
+                        onClick = { if (sightingText.isNotBlank()) { onReportSighting(sightingText); sightingText = "" } },
+                        enabled = sightingText.isNotBlank() && !sightingSubmitting
+                    ) {
+                        if (sightingSubmitting) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = PrimaryOrange)
+                        } else {
+                            Icon(Icons.Default.Send, null, tint = PrimaryOrange)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+
+                sightings.take(5).forEach { sighting ->
+                    SightingRow(sighting = sighting, onThanks = { onSendThanks(sighting.avistamientoId, null) })
+                    Spacer(Modifier.height(8.dp))
+                }
+                Spacer(Modifier.height(8.dp))
             }
 
             // ── Fotos adicionales ─────────────────────────────────────────
@@ -696,7 +894,7 @@ private fun PetInfoRow(icon: ImageVector, label: String, value: String) {
 }
 
 @Composable
-private fun OwnerRow(propietario: PropietarioDetailDto) {
+private fun OwnerRow(propietario: PropietarioDetailDto, onRemove: (() -> Unit)? = null) {
     val persona = propietario.persona
     val contactoPrincipal = persona.mediosContacto.find { it.esPrincipal }
         ?: persona.mediosContacto.firstOrNull()
@@ -757,6 +955,12 @@ private fun OwnerRow(propietario: PropietarioDetailDto) {
                         color = PrimaryOrange,
                         fontWeight = FontWeight.SemiBold
                     )
+                }
+            }
+
+            if (onRemove != null) {
+                IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.Default.PersonRemove, contentDescription = "Quitar cuidador", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -893,6 +1097,81 @@ private fun ReportRow(report: PetReportDto) {
                     fontWeight = FontWeight.Bold,
                     color = estadoColor
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SightingRow(
+    sighting: com.frontend.petfinder.sightings.data.SightingDto,
+    onThanks: () -> Unit
+) {
+    val fechaLegible = remember(sighting.creadoEl) {
+        try {
+            val input = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
+            val output = SimpleDateFormat("d MMM yyyy, HH:mm", Locale("es"))
+            output.format(input.parse(sighting.creadoEl)!!)
+        } catch (_: Exception) { sighting.creadoEl.take(10) }
+    }
+
+    Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 2.dp) {
+        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier.size(32.dp).clip(CircleShape).background(PrimaryOrangeLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Visibility, null, tint = PrimaryOrange, modifier = Modifier.size(16.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        sighting.reportadoPor?.nombre ?: "Anónimo",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(fechaLegible, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+
+            sighting.descripcion?.takeIf { it.isNotBlank() }?.let {
+                Spacer(Modifier.height(6.dp))
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground)
+            }
+
+            if (sighting.fotoEvidenciaUrl != null) {
+                Spacer(Modifier.height(8.dp))
+                AsyncImage(
+                    model = sighting.fotoEvidenciaUrl,
+                    contentDescription = "Foto del avistamiento",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                TextButton(
+                    onClick = onThanks,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Icon(Icons.Default.FavoriteBorder, null, modifier = Modifier.size(14.dp), tint = PrimaryOrange)
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        "Gracias${if (sighting.agradecimientos > 0) " (${sighting.agradecimientos})" else ""}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = PrimaryOrange
+                    )
+                }
             }
         }
     }

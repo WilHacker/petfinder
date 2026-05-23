@@ -25,8 +25,17 @@ interface UserApi {
     @PUT("users/me/location")
     suspend fun updateLocation(@Body request: LocationRequest): Response<Map<String, String>>
 
+    @GET("users/me/contacts/emergency")
+    suspend fun getEmergencyContacts(): Response<List<ContactoDto>>
+
     @POST("users/me/contacts")
     suspend fun addContact(@Body request: CreateContactRequest): Response<ContactoDto>
+
+    @PUT("users/me/contacts/{id}")
+    suspend fun updateContact(
+        @Path("id") id: Int,
+        @Body request: UpdateContactRequest
+    ): Response<ContactoDto>
 
     @DELETE("users/me/contacts/{id}")
     suspend fun deleteContact(@Path("id") id: Int): Response<Map<String, String>>

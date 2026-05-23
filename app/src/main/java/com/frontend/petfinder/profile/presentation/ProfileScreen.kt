@@ -1,6 +1,7 @@
 package com.frontend.petfinder.profile.presentation
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.activity.compose.rememberLauncherForActivityResult
 import com.frontend.petfinder.PetFinderApp
 import androidx.activity.result.contract.ActivityResultContracts
@@ -10,13 +11,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -47,12 +52,23 @@ fun ProfileScreen(
     val nombre by viewModel.nombre.collectAsStateWithLifecycle()
     val apellidoPaterno by viewModel.apellidoPaterno.collectAsStateWithLifecycle()
     val apellidoMaterno by viewModel.apellidoMaterno.collectAsStateWithLifecycle()
+    val contacts by viewModel.contacts.collectAsStateWithLifecycle()
+    val contactsLoading by viewModel.contactsLoading.collectAsStateWithLifecycle()
+    val contactError by viewModel.contactError.collectAsStateWithLifecycle()
 
     val rol by PetFinderApp.sessionManager.getUserRole().collectAsStateWithLifecycle(initialValue = null)
+    var showAddContactSheet by remember { mutableStateOf(false) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri -> uri?.let { viewModel.uploadPhoto(context, it) } }
+
+    LaunchedEffect(contactError) {
+        contactError?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearContactError()
+        }
+    }
 
     LaunchedEffect(saveState) {
         when (val s = saveState) {
@@ -65,6 +81,72 @@ fun ProfileScreen(
                 viewModel.resetSaveState()
             }
             else -> Unit
+        }
+    }
+
+    if (showAddContactSheet) {
+        val tiposContacto = listOf("Celular", "WhatsApp", "Telegram", "Fijo")
+        var selectedTipo by remember { mutableStateOf(tiposContacto[0]) }
+        var valorInput by remember { mutableStateOf("") }
+        var expanded by remember { mutableStateOf(false) }
+
+        ModalBottomSheet(
+            onDismissRequest = { showAddContactSheet = false; valorInput = "" },
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = MaterialTheme.colorScheme.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 40.dp)
+            ) {
+                Text("Agregar contacto de emergencia", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                Spacer(modifier = Modifier.height(20.dp))
+
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = selectedTipo,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Tipo") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.fillMaxWidth().menuAnchor(),
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp)
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        tiposContacto.forEach { tipo ->
+                            DropdownMenuItem(text = { Text(tipo) }, onClick = { selectedTipo = tipo; expanded = false })
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = valorInput,
+                    onValueChange = { valorInput = it },
+                    label = { Text("Número o usuario") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone)
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = {
+                        viewModel.addEmergencyContact(selectedTipo, valorInput)
+                        showAddContactSheet = false
+                        valorInput = ""
+                    },
+                    enabled = valorInput.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
+                ) {
+                    Text("Guardar contacto", fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 
@@ -238,36 +320,69 @@ fun ProfileScreen(
                         singleLine = true
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
 
-                    // Contactos (solo lectura por ahora)
-                    if (!persona?.mediosContacto.isNullOrEmpty()) {
+                    // ── Contactos de emergencia ──
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
-                            text = "Contacto",
+                            text = "Contactos de emergencia",
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.fillMaxWidth()
+                            fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        persona!!.mediosContacto.forEach { contacto ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        IconButton(onClick = { showAddContactSheet = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "Agregar contacto", tint = PrimaryOrange)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Números visibles en tu ficha pública cuando una mascota está extraviada.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (contactsLoading && contacts.isEmpty()) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp).align(Alignment.CenterHorizontally), color = PrimaryOrange, strokeWidth = 2.dp)
+                    } else if (contacts.isEmpty()) {
+                        Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
+                            Text(
+                                text = "Sin contactos de emergencia aún. Toca + para agregar.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(14.dp)
+                            )
+                        }
+                    } else {
+                        contacts.forEach { contacto ->
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                                color = Color.White,
+                                shadowElevation = 1.dp
                             ) {
-                                Text(
-                                    text = "${contacto.tipo}:",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.width(100.dp)
-                                )
-                                Text(
-                                    text = contacto.valor,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(Icons.Default.Phone, null, tint = PrimaryOrange, modifier = Modifier.size(18.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(contacto.valor, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                        Text(contacto.tipo, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.deleteContact(contacto.contactoId) },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                    }
+                                }
                             }
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
 

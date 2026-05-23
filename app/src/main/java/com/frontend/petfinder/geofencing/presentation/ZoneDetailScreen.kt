@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Polyline
 import androidx.compose.material3.*
@@ -42,6 +43,7 @@ fun ZoneDetailScreen(
     val actionState by viewModel.actionState.collectAsStateWithLifecycle()
 
     var showAddPetsSheet by remember { mutableStateOf(false) }
+    var showRadiusSheet by remember { mutableStateOf(false) }
     var petToRemove by remember { mutableStateOf<ZonePetDetailDto?>(null) }
     var selectedPetIds by remember { mutableStateOf<Set<String>>(emptySet()) }
 
@@ -57,6 +59,7 @@ fun ZoneDetailScreen(
     LaunchedEffect(actionState) {
         if (actionState is ZoneDetailViewModel.ActionState.Success) {
             showAddPetsSheet = false
+            showRadiusSheet = false
             selectedPetIds = emptySet()
             viewModel.resetAction()
         }
@@ -75,6 +78,72 @@ fun ZoneDetailScreen(
             },
             onDismiss = { petToRemove = null }
         )
+    }
+
+    if (showRadiusSheet) {
+        val currentRadius = ((zoneState as? ZoneDetailViewModel.ZoneState.Success)?.zone?.radioMetros ?: 80.0).toFloat()
+        var sliderValue by remember(currentRadius) { mutableStateOf(currentRadius) }
+        val isSaving = actionState is ZoneDetailViewModel.ActionState.Loading
+
+        ModalBottomSheet(
+            onDismissRequest = { showRadiusSheet = false },
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = MaterialTheme.colorScheme.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 40.dp)
+            ) {
+                Text(
+                    text = "Ajustar radio",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Zona circular de ${sliderValue.toInt()} metros de radio",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+
+                Slider(
+                    value = sliderValue,
+                    onValueChange = { sliderValue = it },
+                    valueRange = 30f..500f,
+                    steps = 46,
+                    colors = SliderDefaults.colors(
+                        thumbColor = PrimaryOrange,
+                        activeTrackColor = PrimaryOrange,
+                        inactiveTrackColor = PrimaryOrangeLight
+                    )
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("30 m", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("500 m", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+                Button(
+                    onClick = { viewModel.updateRadius(zonaId, sliderValue.toDouble()) },
+                    enabled = !isSaving,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
+                ) {
+                    if (isSaving) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Text("Guardar radio", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
     }
 
     if (showAddPetsSheet) {
@@ -261,7 +330,8 @@ fun ZoneDetailScreen(
                     paddingValues = paddingValues,
                     onToggleActive = { viewModel.toggleActive(zonaId, state.zone.estaActiva ?: true) },
                     onAddPets = { showAddPetsSheet = true },
-                    onRemovePet = { petToRemove = it }
+                    onRemovePet = { petToRemove = it },
+                    onEditRadius = { showRadiusSheet = true }
                 )
             }
         }
@@ -274,7 +344,8 @@ private fun ZoneDetailContent(
     paddingValues: PaddingValues,
     onToggleActive: () -> Unit,
     onAddPets: () -> Unit,
-    onRemovePet: (ZonePetDetailDto) -> Unit
+    onRemovePet: (ZonePetDetailDto) -> Unit,
+    onEditRadius: () -> Unit = {}
 ) {
     val isActive = zone.estaActiva ?: true
     val isCircle = zone.tipo == "circulo"
@@ -323,12 +394,28 @@ private fun ZoneDetailContent(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 if (isCircle && zone.radioMetros != null) {
-                                    Text(
-                                        text = "${zone.radioMetros.toInt()} metros de radio",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = MaterialTheme.colorScheme.onBackground
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "${zone.radioMetros.toInt()} metros de radio",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onBackground
+                                        )
+                                        IconButton(
+                                            onClick = onEditRadius,
+                                            modifier = Modifier.size(20.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Edit,
+                                                contentDescription = "Editar radio",
+                                                tint = PrimaryOrange,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

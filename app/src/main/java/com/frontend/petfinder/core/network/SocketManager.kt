@@ -27,8 +27,16 @@ object SocketManager {
     private val _zoneExitFlow = MutableSharedFlow<ZoneAlertEvent>(extraBufferCapacity = 8)
     val zoneExitFlow = _zoneExitFlow.asSharedFlow()
 
+    private val _petStatusFlow = MutableSharedFlow<PetStatusUpdate>(extraBufferCapacity = 4)
+    val petStatusFlow = _petStatusFlow.asSharedFlow()
+
+    private val _ownerProfileFlow = MutableSharedFlow<OwnerProfileUpdate>(extraBufferCapacity = 1)
+    val ownerProfileFlow = _ownerProfileFlow.asSharedFlow()
+
+    private val _petProfileFlow = MutableSharedFlow<PetProfileUpdate>(extraBufferCapacity = 4)
+    val petProfileFlow = _petProfileFlow.asSharedFlow()
+
     fun connect(jwtToken: String, context: Context) {
-        // Siempre limpia el socket anterior — garantiza listeners frescos y token actualizado
         disconnectClean()
 
         try {
@@ -47,6 +55,10 @@ object SocketManager {
                 Log.e("SocketManager", "Error de conexión: ${args.firstOrNull()}")
             }
 
+            socket?.on(Socket.EVENT_DISCONNECT) { args ->
+                Log.w("SocketManager", "Socket desconectado: ${args.firstOrNull()}")
+            }
+
             socket?.on("pet:location-updated") { args ->
                 val data = args[0] as JSONObject
                 val update = gson.fromJson(data.toString(), PetLocationUpdate::class.java)
@@ -59,12 +71,37 @@ object SocketManager {
                 _ownerLocationFlow.tryEmit(update)
             }
 
-            // ALERTA CRÍTICA: Mascota abandona zona segura
             socket?.on("pet:exited-zone") { args ->
                 val data = args[0] as JSONObject
                 val alert = gson.fromJson(data.toString(), ZoneAlertEvent::class.java)
                 _zoneExitFlow.tryEmit(alert)
                 dispararNotificacionPeligro(context, alert)
+            }
+
+            socket?.on("pet:status-changed") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    val update = gson.fromJson(data.toString(), PetStatusUpdate::class.java)
+                    _petStatusFlow.tryEmit(update)
+                }.onFailure { e ->
+                    Log.e("SocketManager", "pet:status-changed parse error: ${e.message}")
+                }
+            }
+
+            socket?.on("owner:profile-updated") { args ->
+                val data = args[0] as JSONObject
+                val update = gson.fromJson(data.toString(), OwnerProfileUpdate::class.java)
+                _ownerProfileFlow.tryEmit(update)
+            }
+
+            socket?.on("pet:profile-updated") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    val update = gson.fromJson(data.toString(), PetProfileUpdate::class.java)
+                    _petProfileFlow.tryEmit(update)
+                }.onFailure { e ->
+                    Log.e("SocketManager", "pet:profile-updated parse error: ${e.message}")
+                }
             }
 
             socket?.connect()
@@ -83,12 +120,14 @@ object SocketManager {
         socket?.let { s ->
             s.off(Socket.EVENT_CONNECT)
             s.off(Socket.EVENT_CONNECT_ERROR)
+            s.off(Socket.EVENT_DISCONNECT)
             s.off("pet:location-updated")
+            s.off("pet:status-changed")
             s.off("owner:location-updated")
             s.off("pet:exited-zone")
+            s.off("owner:profile-updated")
+            s.off("pet:profile-updated")
             s.disconnect()
-        }
-        if (socket != null) {
             socket = null
             Log.d("SocketManager", "Socket desconectado y listeners eliminados")
         }

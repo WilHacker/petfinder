@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -126,40 +127,33 @@ fun MapHomeScreen(
     val lostPets by mapViewModel.lostPets.collectAsStateWithLifecycle()
     val showLostPets by mapViewModel.showLostPets.collectAsStateWithLifecycle()
     val zoneExitAlert by mapViewModel.zoneExitAlert.collectAsStateWithLifecycle()
+    val tiposMascota by mapViewModel.tiposMascota.collectAsStateWithLifecycle()
+    val speciesFilter by mapViewModel.speciesFilter.collectAsStateWithLifecycle()
 
-    // IDs de mascotas con reporte activo — se renderizan con marcador rojo
+    // IDs de mascotas con marcador rojo: propias extraviadas + ajenas desaparecidas
     val desaparecidasIds = remember(snapshot) {
-        snapshot?.marcadores?.desaparecidas?.mapTo(mutableSetOf()) { it.mascotaId } ?: emptySet()
+        val ids = mutableSetOf<String>()
+        snapshot?.misMascotas?.filter { it.estado == "extraviada" }?.mapTo(ids) { it.mascotaId }
+        snapshot?.desaparecidas?.mapTo(ids) { it.mascotaId }
+        ids
     }
 
     val petsToDraw = remember(snapshot, livePetLocations) {
         val result = mutableMapOf<String, Pair<LatLng, String?>>()
         snapshot?.let { data ->
-            data.zonas.forEach { zona ->
-                val fallbackPos = when (zona.tipo) {
-                    "circulo" -> zona.centro?.let { LatLng(it.lat, it.lng) }
-                    "poligono" -> {
-                        val coordinates = zona.geometria?.coordinates
-                        if (!coordinates.isNullOrEmpty() && coordinates[0].isNotEmpty()) {
-                            val firstPoint = coordinates[0][0]
-                            LatLng(firstPoint[1], firstPoint[0])
-                        } else null
-                    }
-                    else -> null
-                }
-                zona.mascotas?.forEach { pet ->
-                    val livePos = livePetLocations[pet.mascotaId]
-                    val explicitPos = pet.ubicacion?.let { LatLng(it.lat, it.lng) }
-                    val finalPos = livePos ?: explicitPos ?: fallbackPos
-                    if (finalPos != null) {
-                        result[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
-                    }
+            // Mascotas propias con ubicación conocida
+            data.misMascotas.forEach { pet ->
+                val livePos = livePetLocations[pet.mascotaId]
+                val explicitPos = pet.ubicacion?.let { LatLng(it.lat, it.lng) }
+                val finalPos = livePos ?: explicitPos
+                if (finalPos != null) {
+                    result[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
                 }
             }
-            // Desaparecidas con reporte: posición GPS exacta del reporte, sobreescribe fallback
-            data.marcadores.desaparecidas.forEach { pet ->
+            // Desaparecidas: posición GPS exacta del reporte (sobreescribe si ya estaba en misMascotas)
+            data.desaparecidas.forEach { pet ->
                 val livePos = livePetLocations[pet.mascotaId]
-                val finalPos = livePos ?: LatLng(pet.lat, pet.lng)
+                val finalPos = livePos ?: LatLng(pet.ubicacion.lat, pet.ubicacion.lng)
                 result[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
             }
         }
@@ -213,10 +207,10 @@ fun MapHomeScreen(
                 snapshot?.let { data ->
 
                     // 1. MARCADORES DE CO-PROPIETARIOS (Humanos)
-                    data.marcadores.usuariosCompartidos.forEach { user ->
+                    data.colaboradores.forEach { user ->
                         key(user.personaId) {
                             val livePos = liveOwnerLocations[user.personaId]
-                            val finalPos = livePos ?: LatLng(user.lat, user.lng)
+                            val finalPos = livePos ?: LatLng(user.ubicacion.lat, user.ubicacion.lng)
                             val customIcon = rememberCustomMarkerIcon(context, user.fotoUrl, Color(0xFF4CAF50))
 
                             Marker(
@@ -234,11 +228,19 @@ fun MapHomeScreen(
                             val isLost = mascotaId in desaparecidasIds
                             val borderColor = if (isLost) Color(0xFFE53935) else PrimaryOrange
                             val customIcon = rememberCustomMarkerIcon(context, fotoUrl, borderColor)
+                            val recompensa = snapshot?.desaparecidas?.find { it.mascotaId == mascotaId }?.recompensa
+                                ?: snapshot?.misMascotas?.find { it.mascotaId == mascotaId }?.recompensa
+                            val snippetText = if (isLost) {
+                                buildString {
+                                    append("Mascota extraviada")
+                                    if (recompensa != null && recompensa > 0) append(" · Recompensa: Bs. %.0f".format(recompensa))
+                                }
+                            } else null
 
                             Marker(
                                 state = MarkerState(position = pos),
                                 title = if (isLost) "Extraviada" else "Mascota",
-                                snippet = if (isLost) "Mascota extraviada" else null,
+                                snippet = snippetText,
                                 icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(
                                     if (isLost) BitmapDescriptorFactory.HUE_RED
                                     else BitmapDescriptorFactory.HUE_ORANGE
@@ -279,12 +281,14 @@ fun MapHomeScreen(
                 if (showLostPets) {
                     lostPets.filter { it.mascotaId !in petsToDraw }.forEach { lost ->
                         key("lost_${lost.mascotaId}") {
-                            val pos = LatLng(lost.lat, lost.lng)
+                            val pos = LatLng(lost.ubicacion.lat, lost.ubicacion.lng)
                             val customIcon = rememberCustomMarkerIcon(context, lost.fotoUrl, Color(0xFFE53935))
+                            val snippetParts = mutableListOf("Extraviada · ${lost.tipo}")
+                            lost.recompensa?.let { if (it > 0) snippetParts.add("Recompensa: Bs. %.0f".format(it)) }
                             Marker(
                                 state = MarkerState(position = pos),
                                 title = lost.nombre,
-                                snippet = "Extraviada · ${lost.tipo}",
+                                snippet = snippetParts.joinToString(" · "),
                                 icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
                             )
                         }
@@ -406,6 +410,42 @@ fun MapHomeScreen(
                         elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
                     ) {
                         Icon(Icons.Default.MyLocation, contentDescription = "Mi ubicación")
+                    }
+                }
+
+                // Filtros por especie — debajo de la barra superior, centrado
+                if (tiposMascota.isNotEmpty()) {
+                    LazyRow(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .statusBarsPadding()
+                            .padding(top = 72.dp)
+                            .fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
+                            FilterChip(
+                                selected = speciesFilter == null,
+                                onClick = { mapViewModel.setSpeciesFilter(null) },
+                                label = { Text("Todos", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = PrimaryOrange,
+                                    selectedLabelColor = Color.White
+                                )
+                            )
+                        }
+                        items(tiposMascota) { tipo ->
+                            FilterChip(
+                                selected = speciesFilter == tipo.tipoId,
+                                onClick = { mapViewModel.setSpeciesFilter(if (speciesFilter == tipo.tipoId) null else tipo.tipoId) },
+                                label = { Text(tipo.nombre, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = PrimaryOrange,
+                                    selectedLabelColor = Color.White
+                                )
+                            )
+                        }
                     }
                 }
 
