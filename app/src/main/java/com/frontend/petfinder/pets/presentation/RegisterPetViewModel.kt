@@ -40,7 +40,7 @@ class RegisterPetViewModel : ViewModel() {
     private val _fotosSeleccionadas = MutableStateFlow<List<Uri>>(emptyList())
     val fotosSeleccionadas: StateFlow<List<Uri>> = _fotosSeleccionadas.asStateFlow()
 
-    fun onNombreChange(v: String) { _nombre.value = v }
+    fun onNombreChange(v: String) { _nombre.value = v.trimStart() }
     fun onTipoSeleccionado(tipo: TipoMascotaDto?) { _tipoSeleccionado.value = tipo }
     fun onSexoChange(v: String) { _sexo.value = v }
     fun onColorPrimarioChange(v: String) { _colorPrimario.value = v }
@@ -85,7 +85,7 @@ class RegisterPetViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = RegisterPetState.Loading
 
-            val nombreBody = _nombre.value.toRequestBody(null)
+            val nombreBody = _nombre.value.trim().toRequestBody(null)
             val tipoIdBody = _tipoSeleccionado.value?.tipoId?.toString()?.toRequestBody(null)
             val sexoBody = _sexo.value.ifBlank { null }?.toRequestBody(null)
             val colorBody = _colorPrimario.value.ifBlank { null }?.toRequestBody(null)

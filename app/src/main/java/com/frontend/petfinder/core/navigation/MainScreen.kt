@@ -42,6 +42,25 @@ fun MainScreen(rootNavController: NavHostController) {
     val rol by PetFinderApp.sessionManager.getUserRole().collectAsStateWithLifecycle(initialValue = null)
     val isAdmin = rol == "admin"
 
+    // Observa si PetDetailScreen pidió centrar el mapa en una mascota
+    val focusMascotaId by rootNavController.currentBackStackEntry
+        ?.savedStateHandle
+        ?.getStateFlow("focusMascotaId", null as String?)
+        ?.collectAsStateWithLifecycle(null) ?: remember { mutableStateOf(null) }
+
+    LaunchedEffect(focusMascotaId) {
+        focusMascotaId?.let { mascotaId ->
+            sharedMapViewModel.focusOnPet(mascotaId)
+            rootNavController.currentBackStackEntry
+                ?.savedStateHandle?.remove<String>("focusMascotaId")
+            bottomNavController.navigate(NavRoutes.MapHome.route) {
+                popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
+                launchSingleTop = true
+                restoreState = true
+            }
+        }
+    }
+
     Scaffold(
         bottomBar = {
             val navBackStackEntry by bottomNavController.currentBackStackEntryAsState()

@@ -220,7 +220,6 @@ class PetDetailViewModel : ViewModel() {
     private val _communityAlertSending = MutableStateFlow(false)
     val communityAlertSending: StateFlow<Boolean> = _communityAlertSending.asStateFlow()
 
-    // Toast corto para éxito; null = no mostrar
     private val _communityAlertResult = MutableStateFlow<String?>(null)
     val communityAlertResult: StateFlow<String?> = _communityAlertResult.asStateFlow()
 

@@ -64,7 +64,7 @@ class MapViewModel : ViewModel() {
     private val _lostPets = MutableStateFlow<List<LostPetMarkerDto>>(emptyList())
     val lostPets: StateFlow<List<LostPetMarkerDto>> = _lostPets.asStateFlow()
 
-    private val _showLostPets = MutableStateFlow(true)
+    private val _showLostPets = MutableStateFlow(false)
     val showLostPets: StateFlow<Boolean> = _showLostPets.asStateFlow()
 
     fun toggleLostPetsLayer() {
@@ -373,5 +373,16 @@ class MapViewModel : ViewModel() {
                 }
             )
         }
+    }
+
+    private val _focusMascotaId = MutableStateFlow<String?>(null)
+    val focusMascotaId: StateFlow<String?> = _focusMascotaId.asStateFlow()
+
+    fun focusOnPet(mascotaId: String) {
+        _focusMascotaId.value = mascotaId
+    }
+
+    fun clearFocus() {
+        _focusMascotaId.value = null
     }
 }

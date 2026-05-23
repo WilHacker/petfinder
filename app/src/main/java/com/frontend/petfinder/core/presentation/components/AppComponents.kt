@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
@@ -64,7 +65,7 @@ fun PetFinderButton(
 }
 
 // 3. MODAL UNIFICADO
-enum class DialogType { DEFAULT, DANGER, INFO }
+enum class DialogType { DEFAULT, DANGER, INFO, SUCCESS }
 
 @Composable
 fun PetFinderDialog(
@@ -78,23 +79,29 @@ fun PetFinderDialog(
     onDismiss: () -> Unit,
     content: @Composable (() -> Unit)? = null
 ) {
+    val successGreen = Color(0xFF2E7D32)
+    val successGreenContainer = Color(0xFFE8F5E9)
+
     val containerColor = when (type) {
-        DialogType.DANGER -> MaterialTheme.colorScheme.errorContainer
-        else -> MaterialTheme.colorScheme.surface
+        DialogType.DANGER  -> MaterialTheme.colorScheme.errorContainer
+        DialogType.SUCCESS -> successGreenContainer
+        else               -> MaterialTheme.colorScheme.surface
     }
     val onContainerColor = when (type) {
-        DialogType.DANGER -> MaterialTheme.colorScheme.onErrorContainer
-        else -> MaterialTheme.colorScheme.onSurface
+        DialogType.DANGER  -> MaterialTheme.colorScheme.onErrorContainer
+        DialogType.SUCCESS -> successGreen
+        else               -> MaterialTheme.colorScheme.onSurface
     }
     val resolvedIcon: ImageVector? = icon ?: when (type) {
-        DialogType.DANGER -> Icons.Default.Warning
-        DialogType.INFO -> Icons.Default.Info
+        DialogType.DANGER  -> Icons.Default.Warning
+        DialogType.INFO    -> Icons.Default.Info
+        DialogType.SUCCESS -> Icons.Default.CheckCircle
         DialogType.DEFAULT -> null
     }
     val iconTint = when (type) {
-        DialogType.DANGER -> MaterialTheme.colorScheme.error
-        DialogType.INFO -> MaterialTheme.colorScheme.primary
-        DialogType.DEFAULT -> MaterialTheme.colorScheme.primary
+        DialogType.DANGER  -> MaterialTheme.colorScheme.error
+        DialogType.SUCCESS -> successGreen
+        else               -> MaterialTheme.colorScheme.primary
     }
 
     AlertDialog(
@@ -129,9 +136,13 @@ fun PetFinderDialog(
         },
         confirmButton = {
             val confirmColors = when (type) {
-                DialogType.DANGER -> ButtonDefaults.buttonColors(
+                DialogType.DANGER  -> ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError
+                )
+                DialogType.SUCCESS -> ButtonDefaults.buttonColors(
+                    containerColor = successGreen,
+                    contentColor = Color.White
                 )
                 else -> ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.primary,
@@ -192,25 +203,41 @@ fun PetFinderTextField(
     modifier: Modifier = Modifier,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
-    trailingIcon: @Composable (() -> Unit)? = null
+    trailingIcon: @Composable (() -> Unit)? = null,
+    errorMessage: String? = null
 ) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        placeholder = { Text(placeholder, color = Color.Gray) },
-        singleLine = true,
-        visualTransformation = visualTransformation,
-        keyboardOptions = keyboardOptions,
-        trailingIcon = trailingIcon,
-        shape = RoundedCornerShape(16.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = Color.White,
-            unfocusedContainerColor = Color.White,
-            focusedBorderColor = MaterialTheme.colorScheme.primary,
-            unfocusedBorderColor = Color(0xFFEAEAEA), // Borde gris casi invisible
-            focusedTextColor = MaterialTheme.colorScheme.onBackground,
-            unfocusedTextColor = MaterialTheme.colorScheme.onBackground
-        ),
-        modifier = modifier.fillMaxWidth()
-    )
+    Column(modifier = modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            placeholder = { Text(placeholder, color = Color.Gray) },
+            singleLine = true,
+            visualTransformation = visualTransformation,
+            keyboardOptions = keyboardOptions,
+            trailingIcon = trailingIcon,
+            isError = errorMessage != null,
+            shape = RoundedCornerShape(16.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedContainerColor = Color.White,
+                unfocusedContainerColor = Color.White,
+                focusedBorderColor = if (errorMessage != null) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = if (errorMessage != null) MaterialTheme.colorScheme.error
+                    else Color(0xFFEAEAEA),
+                focusedTextColor = MaterialTheme.colorScheme.onBackground,
+                unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
+                errorBorderColor = MaterialTheme.colorScheme.error,
+                errorContainerColor = Color.White
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (errorMessage != null) {
+            Text(
+                text = errorMessage,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.padding(start = 16.dp, top = 4.dp)
+            )
+        }
+    }
 }

@@ -17,6 +17,7 @@ import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.auth.presentation.LoginScreen
 import com.frontend.petfinder.auth.presentation.RegisterScreen
 import com.frontend.petfinder.geofencing.presentation.ZoneDetailScreen
+import com.frontend.petfinder.pets.presentation.EditPetScreen
 import com.frontend.petfinder.pets.presentation.MedicalHistoryScreen
 import com.frontend.petfinder.pets.presentation.PetDetailScreen
 import com.frontend.petfinder.pets.presentation.PetPublicCardScreen
@@ -116,6 +117,30 @@ fun PetFinderNavGraph(navController: NavHostController) {
                         onNavigateBack = { navController.popBackStack() },
                         onNavigateToMedical = {
                             navController.navigate(NavRoutes.MedicalHistory.createRoute(mascotaId))
+                        },
+                        onNavigateToEdit = {
+                            navController.navigate(NavRoutes.EditPet.createRoute(mascotaId))
+                        },
+                        onViewOnMap = { petId ->
+                            navController.getBackStackEntry(NavRoutes.Main.route)
+                                .savedStateHandle["focusMascotaId"] = petId
+                            navController.popBackStack(NavRoutes.Main.route, inclusive = false)
+                        }
+                    )
+                }
+
+                composable(
+                    route = NavRoutes.EditPet.route,
+                    arguments = listOf(
+                        navArgument(NavRoutes.EditPet.ARG_PET_ID) { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val mascotaId = backStackEntry.arguments?.getString(NavRoutes.EditPet.ARG_PET_ID) ?: ""
+                    EditPetScreen(
+                        mascotaId = mascotaId,
+                        onNavigateBack = { navController.popBackStack() },
+                        onDeleted = {
+                            navController.popBackStack(NavRoutes.Main.route, inclusive = false)
                         }
                     )
                 }

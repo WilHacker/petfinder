@@ -121,4 +121,24 @@ object PetRepository {
         if (r.isSuccessful) r.body() ?: CommunityAlertResponse(mensaje = "Alerta comunitaria enviada")
         else throw HttpException(r)
     }
+
+    suspend fun updatePet(petId: String, request: UpdatePetRequest): Result<Unit> = runCatching {
+        val r = ApiServices.pets.updatePet(petId, request)
+        if (r.isSuccessful) Unit else throw HttpException(r)
+    }
+
+    suspend fun deletePet(petId: String): Result<Unit> = runCatching {
+        val r = ApiServices.pets.deletePet(petId)
+        if (r.isSuccessful) Unit else throw HttpException(r)
+    }
+
+    suspend fun addPetPhotos(petId: String, fotos: List<MultipartBody.Part>): Result<List<FotoMascotaDto>> = runCatching {
+        val r = ApiServices.pets.addPetPhotos(petId, null, fotos)
+        if (r.isSuccessful) r.body() ?: emptyList() else throw HttpException(r)
+    }
+
+    suspend fun deletePetPhoto(petId: String, fotoId: Int): Result<Unit> = runCatching {
+        val r = ApiServices.pets.deletePetPhoto(petId, fotoId)
+        if (r.isSuccessful) Unit else throw HttpException(r)
+    }
 }

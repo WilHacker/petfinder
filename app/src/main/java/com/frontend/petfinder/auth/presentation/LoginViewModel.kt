@@ -2,6 +2,7 @@ package com.frontend.petfinder.auth.presentation
 
 import android.content.Context
 import android.net.Uri
+import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.petfinder.PetFinderApp
@@ -24,8 +25,21 @@ class LoginViewModel : ViewModel() {
     private val _clave = MutableStateFlow("")
     val clave: StateFlow<String> = _clave.asStateFlow()
 
-    fun onCorreoChange(v: String) { _correo.value = v }
-    fun onClaveChange(v: String) { _clave.value = v }
+    private val _correoError = MutableStateFlow<String?>(null)
+    val correoError: StateFlow<String?> = _correoError.asStateFlow()
+
+    private val _claveError = MutableStateFlow<String?>(null)
+    val claveError: StateFlow<String?> = _claveError.asStateFlow()
+
+    fun onCorreoChange(v: String) {
+        _correo.value = v.filter { it != ' ' }.lowercase()
+        _correoError.value = null
+    }
+
+    fun onClaveChange(v: String) {
+        _clave.value = v
+        _claveError.value = null
+    }
 
     sealed class LoginState {
         object Idle : LoginState()
@@ -38,10 +52,20 @@ class LoginViewModel : ViewModel() {
     val uiState: StateFlow<LoginState> = _uiState.asStateFlow()
 
     fun login(context: Context) {
-        if (_correo.value.isBlank() || _clave.value.isBlank()) {
-            _uiState.value = LoginState.Error("Completa el correo y la contraseña para continuar.")
-            return
+        var hasError = false
+        if (_correo.value.isBlank()) {
+            _correoError.value = "El correo es obligatorio"
+            hasError = true
+        } else if (!Patterns.EMAIL_ADDRESS.matcher(_correo.value).matches()) {
+            _correoError.value = "Ingresa un correo válido"
+            hasError = true
         }
+        if (_clave.value.isBlank()) {
+            _claveError.value = "La contraseña es obligatoria"
+            hasError = true
+        }
+        if (hasError) return
+
         viewModelScope.launch {
             _uiState.value = LoginState.Loading
             AuthRepository.login(LoginRequest(_correo.value, _clave.value)).fold(

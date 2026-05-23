@@ -33,6 +33,12 @@ sealed class NavRoutes(val route: String) {
         const val ARG_PET_ID = "mascotaId"
     }
 
+    // Editar datos de una mascota
+    object EditPet : NavRoutes("edit_pet/{mascotaId}") {
+        fun createRoute(mascotaId: String) = "edit_pet/$mascotaId"
+        const val ARG_PET_ID = "mascotaId"
+    }
+
     // Detalle de zona segura
     object ZoneDetail : NavRoutes("zone_detail/{zonaId}") {
         fun createRoute(zonaId: Int) = "zone_detail/$zonaId"

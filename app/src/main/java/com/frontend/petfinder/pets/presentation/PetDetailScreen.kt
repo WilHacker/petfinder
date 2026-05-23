@@ -3,7 +3,6 @@ package com.frontend.petfinder.pets.presentation
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -47,7 +46,14 @@ import com.frontend.petfinder.pets.data.dto.PropietarioDetailDto
 import com.frontend.petfinder.pets.presentation.components.Base64Image
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.tasks.CancellationTokenSource
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapProperties
+import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.rememberCameraPositionState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
@@ -99,7 +105,9 @@ fun PetDetailScreen(
     mascotaId: String,
     viewModel: PetDetailViewModel = viewModel(),
     onNavigateBack: () -> Unit,
-    onNavigateToMedical: () -> Unit = {}
+    onNavigateToMedical: () -> Unit = {},
+    onNavigateToEdit: () -> Unit = {},
+    onViewOnMap: (mascotaId: String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -127,59 +135,84 @@ fun PetDetailScreen(
 
     var activeModal by remember { mutableStateOf<PetDetailModal>(PetDetailModal.None) }
     var locationSuccess by remember { mutableStateOf(false) }
+    var showMapPicker by remember { mutableStateOf(false) }
+    var feedbackDialog by remember { mutableStateOf<Triple<DialogType, String, String>?>(null) }
 
     LaunchedEffect(mascotaId) { viewModel.load(mascotaId) }
 
     LaunchedEffect(locationError) {
-        locationError?.let { viewModel.clearLocationError() }
+        locationError?.let {
+            feedbackDialog = Triple(DialogType.DANGER, "Error de ubicación", it)
+            viewModel.clearLocationError()
+        }
     }
 
     LaunchedEffect(ownerError) {
         ownerError?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            feedbackDialog = Triple(DialogType.DANGER, "Error", it)
             viewModel.clearOwnerError()
         }
     }
 
     LaunchedEffect(sightingError) {
         sightingError?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            feedbackDialog = Triple(DialogType.DANGER, "Error", it)
             viewModel.clearSightingError()
         }
     }
 
     LaunchedEffect(qrDownloadResult) {
         qrDownloadResult?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            val isError = it.startsWith("No se pudo")
+            feedbackDialog = Triple(
+                if (isError) DialogType.DANGER else DialogType.SUCCESS,
+                if (isError) "Error" else "Listo",
+                it
+            )
             viewModel.clearQrDownloadResult()
         }
     }
 
     LaunchedEffect(communityAlertResult) {
         communityAlertResult?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            feedbackDialog = Triple(DialogType.SUCCESS, "Alerta enviada", it)
             viewModel.clearCommunityAlertResult()
         }
     }
 
     LaunchedEffect(rewardResult) {
         rewardResult?.let {
-            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            val isError = it.startsWith("No se pudo") || it.startsWith("Sin permiso") || it.startsWith("La mascota")
+            feedbackDialog = Triple(
+                if (isError) DialogType.DANGER else DialogType.SUCCESS,
+                if (isError) "Error" else "Recompensa actualizada",
+                it
+            )
             viewModel.clearRewardResult()
         }
     }
 
-    // ── Dialog alerta comunitaria (razon / error) ──────────────────────────
+    // ── Feedback genérico (errores, éxitos) ───────────────────────────────
+    feedbackDialog?.let { (type, title, message) ->
+        PetFinderDialog(
+            type = type,
+            title = title,
+            message = message,
+            confirmText = "Entendido",
+            onConfirm = { feedbackDialog = null },
+            onDismiss = { feedbackDialog = null }
+        )
+    }
+
+    // ── Dialog alerta comunitaria (razon / sin usuarios) ──────────────────
     communityAlertDialog?.let { dialog ->
-        AlertDialog(
-            onDismissRequest = { viewModel.clearCommunityAlertDialog() },
-            confirmButton = {
-                TextButton(onClick = { viewModel.clearCommunityAlertDialog() }) {
-                    Text("Entendido", color = PrimaryOrange)
-                }
-            },
-            title = { Text(dialog.title, fontWeight = FontWeight.Bold) },
-            text = { Text(dialog.message, style = MaterialTheme.typography.bodyMedium) }
+        PetFinderDialog(
+            type = DialogType.INFO,
+            title = dialog.title,
+            message = dialog.message,
+            confirmText = "Entendido",
+            onConfirm = { viewModel.clearCommunityAlertDialog() },
+            onDismiss = { viewModel.clearCommunityAlertDialog() }
         )
     }
 
@@ -383,6 +416,23 @@ fun PetDetailScreen(
                         Spacer(Modifier.width(8.dp))
                         Text("Usar mi GPS actual", fontWeight = FontWeight.Bold)
                     }
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        activeModal = PetDetailModal.None
+                        locationSuccess = false
+                        showMapPicker = true
+                    },
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.5.dp, PrimaryOrange)
+                ) {
+                    Icon(Icons.Default.Place, null, tint = PrimaryOrange, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Marcar en el mapa", fontWeight = FontWeight.Bold, color = PrimaryOrange)
                 }
             }
         }
@@ -718,6 +768,7 @@ fun PetDetailScreen(
                 },
                 onNavigateToMedical = onNavigateToMedical,
                 onShowLocationSheet = { activeModal = PetDetailModal.LocationSheet },
+                onViewOnMap = { onViewOnMap(mascotaId) },
                 onAddOwner = { activeModal = PetDetailModal.AddOwnerSheet },
                 onRemoveOwner = { personaId -> viewModel.removeOwner(mascotaId, personaId) },
                 onReportSighting = { desc ->
@@ -732,8 +783,115 @@ fun PetDetailScreen(
                 },
                 onSendThanks = { id, msg -> viewModel.sendThanks(id, msg) },
                 onCommunityAlert = { activeModal = PetDetailModal.CommunityAlertSheet },
-                onUpdateReward = { activeModal = PetDetailModal.RewardSheet }
+                onUpdateReward = { activeModal = PetDetailModal.RewardSheet },
+                onNavigateToEdit = onNavigateToEdit
             )
+        }
+    }
+
+    // ── Pantalla completa: selector de ubicación en mapa ─────────────────
+    // Renderizado ÚLTIMO para quedar encima de todo el contenido
+    if (showMapPicker) {
+        val cochabamba = LatLng(-17.3935, -66.1570)
+        val mapPickerCameraState = rememberCameraPositionState {
+            position = CameraPosition.fromLatLngZoom(cochabamba, 14f)
+        }
+        var mapPickerSaving by remember { mutableStateOf(false) }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            GoogleMap(
+                modifier = Modifier.fillMaxSize(),
+                cameraPositionState = mapPickerCameraState,
+                properties = MapProperties(isMyLocationEnabled = true),
+                uiSettings = MapUiSettings(
+                    zoomControlsEnabled = false,
+                    myLocationButtonEnabled = false,
+                    compassEnabled = false
+                )
+            )
+
+            // Pin fijo en el centro
+            Icon(
+                imageVector = Icons.Default.Place,
+                contentDescription = null,
+                tint = PrimaryOrange,
+                modifier = Modifier
+                    .size(48.dp)
+                    .align(Alignment.Center)
+                    .offset(y = (-24).dp)
+            )
+
+            // Botón volver
+            SmallFloatingActionButton(
+                onClick = { showMapPicker = false },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .statusBarsPadding()
+                    .padding(16.dp),
+                containerColor = MaterialTheme.colorScheme.background
+            ) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
+            }
+
+            // Panel inferior con coordenadas + confirmar
+            val target = mapPickerCameraState.position.target
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter),
+                color = MaterialTheme.colorScheme.background,
+                shadowElevation = 16.dp,
+                shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 24.dp, vertical = 20.dp)
+                        .navigationBarsPadding(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Mueve el mapa para posicionar el pin",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "%.5f, %.5f".format(target.latitude, target.longitude),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            mapPickerSaving = true
+                            scope.launch {
+                                viewModel.updateLocation(mascotaId, target.latitude, target.longitude)
+                                mapPickerSaving = false
+                                showMapPicker = false
+                                locationSuccess = true
+                                activeModal = PetDetailModal.LocationSheet
+                            }
+                        },
+                        enabled = !mapPickerSaving,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
+                    ) {
+                        if (mapPickerSaving) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.CheckCircle, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Confirmar ubicación", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -751,12 +909,14 @@ private fun PetDetailContent(
     onShowQr: () -> Unit,
     onNavigateToMedical: () -> Unit,
     onShowLocationSheet: () -> Unit,
+    onViewOnMap: () -> Unit = {},
     onAddOwner: () -> Unit = {},
     onRemoveOwner: (String) -> Unit = {},
     onReportSighting: (String) -> Unit = {},
     onSendThanks: (String, String?) -> Unit = { _, _ -> },
     onCommunityAlert: () -> Unit = {},
-    onUpdateReward: () -> Unit = {}
+    onUpdateReward: () -> Unit = {},
+    onNavigateToEdit: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val imageUrl = pet.fotos?.find { it.esPrincipal }?.fotoUrl
@@ -827,7 +987,7 @@ private fun PetDetailContent(
                 }
             }
 
-            // Badge de estado — top-end
+            // Badge de estado
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -1038,6 +1198,13 @@ private fun PetDetailContent(
             PetSectionHeader("Acciones")
 
             ActionCard(
+                icon = Icons.Default.Edit,
+                title = "Editar mascota",
+                subtitle = "Modifica datos, fotos y más",
+                onClick = onNavigateToEdit
+            )
+            Spacer(Modifier.height(10.dp))
+            ActionCard(
                 icon = Icons.Default.MedicalServices,
                 title = "Historial médico",
                 subtitle = "Vacunas, consultas y más",
@@ -1049,6 +1216,13 @@ private fun PetDetailContent(
                 title = "Actualizar ubicación",
                 subtitle = "Registra la última posición conocida",
                 onClick = onShowLocationSheet
+            )
+            Spacer(Modifier.height(10.dp))
+            ActionCard(
+                icon = Icons.Default.Map,
+                title = "Ver en el mapa",
+                subtitle = "Ir al mapa y centrar en esta mascota",
+                onClick = onViewOnMap
             )
             if (estado == "extraviada") {
                 Spacer(Modifier.height(10.dp))

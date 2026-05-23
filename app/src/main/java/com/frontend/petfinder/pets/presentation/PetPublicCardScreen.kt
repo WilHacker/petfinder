@@ -4,7 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.widget.Toast
+import com.frontend.petfinder.core.presentation.components.DialogType
+import com.frontend.petfinder.core.presentation.components.PetFinderDialog
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -77,11 +78,24 @@ fun PetPublicCardScreen(
     val ownerCard by viewModel.ownerCard.collectAsStateWithLifecycle()
     val ownerCardLoading by viewModel.ownerCardLoading.collectAsStateWithLifecycle()
 
+    var feedbackDialog by remember { mutableStateOf<Triple<DialogType, String, String>?>(null) }
+
     LaunchedEffect(sightingSuccess) {
         if (sightingSuccess) {
-            Toast.makeText(context, "¡Avistamiento reportado! Gracias por ayudar.", Toast.LENGTH_SHORT).show()
+            feedbackDialog = Triple(DialogType.SUCCESS, "¡Gracias!", "¡Avistamiento reportado! Gracias por ayudar.")
             viewModel.clearSightingSuccess()
         }
+    }
+
+    feedbackDialog?.let { (type, title, message) ->
+        PetFinderDialog(
+            type = type,
+            title = title,
+            message = message,
+            confirmText = "Entendido",
+            onConfirm = { feedbackDialog = null },
+            onDismiss = { feedbackDialog = null }
+        )
     }
 
     LaunchedEffect(token) {

@@ -1,6 +1,7 @@
 package com.frontend.petfinder.auth.presentation
 
 import android.content.Context
+import android.util.Patterns
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.petfinder.PetFinderApp
@@ -38,13 +39,32 @@ class RegisterViewModel : ViewModel() {
     private val _telefono = MutableStateFlow("")
     val telefono: StateFlow<String> = _telefono.asStateFlow()
 
-    fun onNombreChange(v: String) { _nombre.value = v }
-    fun onApellidoPaternoChange(v: String) { _apellidoPaterno.value = v }
+    // Errores por campo
+    private val _nombreError = MutableStateFlow<String?>(null)
+    val nombreError: StateFlow<String?> = _nombreError.asStateFlow()
+
+    private val _apellidoPaternoError = MutableStateFlow<String?>(null)
+    val apellidoPaternoError: StateFlow<String?> = _apellidoPaternoError.asStateFlow()
+
+    private val _ciError = MutableStateFlow<String?>(null)
+    val ciError: StateFlow<String?> = _ciError.asStateFlow()
+
+    private val _correoError = MutableStateFlow<String?>(null)
+    val correoError: StateFlow<String?> = _correoError.asStateFlow()
+
+    private val _claveError = MutableStateFlow<String?>(null)
+    val claveError: StateFlow<String?> = _claveError.asStateFlow()
+
+    private val _telefonoError = MutableStateFlow<String?>(null)
+    val telefonoError: StateFlow<String?> = _telefonoError.asStateFlow()
+
+    fun onNombreChange(v: String) { _nombre.value = v; _nombreError.value = null }
+    fun onApellidoPaternoChange(v: String) { _apellidoPaterno.value = v; _apellidoPaternoError.value = null }
     fun onApellidoMaternoChange(v: String) { _apellidoMaterno.value = v }
-    fun onCiChange(v: String) { _ci.value = v }
-    fun onCorreoChange(v: String) { _correo.value = v }
-    fun onClaveChange(v: String) { _clave.value = v }
-    fun onTelefonoChange(v: String) { _telefono.value = v }
+    fun onCiChange(v: String) { _ci.value = v.filter { it.isDigit() }; _ciError.value = null }
+    fun onCorreoChange(v: String) { _correo.value = v.filter { it != ' ' }.lowercase(); _correoError.value = null }
+    fun onClaveChange(v: String) { _clave.value = v; _claveError.value = null }
+    fun onTelefonoChange(v: String) { _telefono.value = v.filter { it.isDigit() }; _telefonoError.value = null }
 
     sealed class RegisterState {
         object Idle : RegisterState()
@@ -57,16 +77,44 @@ class RegisterViewModel : ViewModel() {
     val uiState: StateFlow<RegisterState> = _uiState.asStateFlow()
 
     fun registerOwner(context: Context) {
-        if (_nombre.value.isBlank() || _ci.value.isBlank() || _correo.value.isBlank() || _clave.value.isBlank()) {
-            _uiState.value = RegisterState.Error("Faltan campos obligatorios.")
-            return
+        var hasError = false
+
+        if (_nombre.value.trim().isBlank()) {
+            _nombreError.value = "El nombre es obligatorio"
+            hasError = true
         }
+        if (_apellidoPaterno.value.trim().isBlank()) {
+            _apellidoPaternoError.value = "El apellido paterno es obligatorio"
+            hasError = true
+        }
+        if (_ci.value.isBlank()) {
+            _ciError.value = "La cédula de identidad es obligatoria"
+            hasError = true
+        }
+        if (_correo.value.isBlank()) {
+            _correoError.value = "El correo es obligatorio"
+            hasError = true
+        } else if (!Patterns.EMAIL_ADDRESS.matcher(_correo.value).matches()) {
+            _correoError.value = "Ingresa un correo válido"
+            hasError = true
+        }
+        if (_clave.value.length < 6) {
+            _claveError.value = if (_clave.value.isBlank()) "La contraseña es obligatoria"
+                else "Mínimo 6 caracteres"
+            hasError = true
+        }
+        if (_telefono.value.isNotBlank() && _telefono.value.length < 7) {
+            _telefonoError.value = "Ingresa un número válido (mínimo 7 dígitos)"
+            hasError = true
+        }
+        if (hasError) return
+
         viewModelScope.launch {
             _uiState.value = RegisterState.Loading
             val request = RegisterRequest(
-                nombre = _nombre.value,
-                apellidoPaterno = _apellidoPaterno.value,
-                apellidoMaterno = _apellidoMaterno.value,
+                nombre = _nombre.value.trim(),
+                apellidoPaterno = _apellidoPaterno.value.trim(),
+                apellidoMaterno = _apellidoMaterno.value.trim().ifBlank { "" },
                 ci = _ci.value,
                 correoElectronico = _correo.value,
                 clave = _clave.value,

@@ -1,6 +1,5 @@
 package com.frontend.petfinder.profile.presentation
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.activity.compose.rememberLauncherForActivityResult
 import com.frontend.petfinder.PetFinderApp
@@ -58,6 +57,7 @@ fun ProfileScreen(
 
     val rol by PetFinderApp.sessionManager.getUserRole().collectAsStateWithLifecycle(initialValue = null)
     var showAddContactSheet by remember { mutableStateOf(false) }
+    var feedbackDialog by remember { mutableStateOf<Triple<DialogType, String, String>?>(null) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -65,7 +65,7 @@ fun ProfileScreen(
 
     LaunchedEffect(contactError) {
         contactError?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            feedbackDialog = Triple(DialogType.DANGER, "Error", it)
             viewModel.clearContactError()
         }
     }
@@ -73,15 +73,26 @@ fun ProfileScreen(
     LaunchedEffect(saveState) {
         when (val s = saveState) {
             is ProfileViewModel.SaveState.Saved -> {
-                Toast.makeText(context, "Perfil actualizado", Toast.LENGTH_SHORT).show()
+                feedbackDialog = Triple(DialogType.SUCCESS, "Perfil actualizado", "Los cambios se guardaron correctamente.")
                 viewModel.resetSaveState()
             }
             is ProfileViewModel.SaveState.Error -> {
-                Toast.makeText(context, s.message, Toast.LENGTH_LONG).show()
+                feedbackDialog = Triple(DialogType.DANGER, "Error al guardar", s.message)
                 viewModel.resetSaveState()
             }
             else -> Unit
         }
+    }
+
+    feedbackDialog?.let { (type, title, message) ->
+        PetFinderDialog(
+            type = type,
+            title = title,
+            message = message,
+            confirmText = "Entendido",
+            onConfirm = { feedbackDialog = null },
+            onDismiss = { feedbackDialog = null }
+        )
     }
 
     if (showAddContactSheet) {

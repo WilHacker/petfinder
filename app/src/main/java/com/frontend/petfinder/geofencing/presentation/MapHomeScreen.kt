@@ -4,7 +4,6 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import coil.imageLoader
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -25,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -33,6 +33,8 @@ import com.frontend.petfinder.core.presentation.components.DialogType
 import com.frontend.petfinder.core.presentation.components.PetFinderDialog
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.utils.MapStyle
+import com.frontend.petfinder.core.utils.PermissionHandler
+import com.google.android.gms.location.LocationServices
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.BitmapDescriptor
 import com.google.android.gms.maps.model.BitmapDescriptorFactory
@@ -129,32 +131,36 @@ fun MapHomeScreen(
     val zoneExitAlert by mapViewModel.zoneExitAlert.collectAsStateWithLifecycle()
     val tiposMascota by mapViewModel.tiposMascota.collectAsStateWithLifecycle()
     val speciesFilter by mapViewModel.speciesFilter.collectAsStateWithLifecycle()
+    val focusMascotaId by mapViewModel.focusMascotaId.collectAsStateWithLifecycle()
 
-    // IDs de mascotas con marcador rojo: propias extraviadas + ajenas desaparecidas
-    val desaparecidasIds = remember(snapshot) {
-        val ids = mutableSetOf<String>()
-        snapshot?.misMascotas?.filter { it.estado == "extraviada" }?.mapTo(ids) { it.mascotaId }
-        snapshot?.desaparecidas?.mapTo(ids) { it.mascotaId }
-        ids
+    // IDs de mis propias mascotas extraviadas (borde rojo en el marcador)
+    val misExtraviadas = remember(snapshot) {
+        snapshot?.misMascotas
+            ?.filter { it.estado == "extraviada" }
+            ?.map { it.mascotaId }
+            ?.toSet() ?: emptySet()
     }
 
-    // mascotaId → (position, fotoUrl, tipo)
-    val petsToDraw = remember(snapshot, livePetLocations) {
+    // Mis mascotas (siempre visibles, independiente del botón Perdidas)
+    val myPetsToDraw = remember(snapshot, livePetLocations) {
         val result = mutableMapOf<String, Triple<LatLng, String?, String>>()
-        snapshot?.let { data ->
-            data.misMascotas.forEach { pet ->
-                val livePos = livePetLocations[pet.mascotaId]
-                val explicitPos = pet.ubicacion?.let { LatLng(it.lat, it.lng) }
-                val finalPos = livePos ?: explicitPos
-                if (finalPos != null) {
-                    result[pet.mascotaId] = Triple(finalPos, pet.fotoUrl, pet.tipo)
-                }
-            }
-            data.desaparecidas.forEach { pet ->
-                val livePos = livePetLocations[pet.mascotaId]
-                val finalPos = livePos ?: LatLng(pet.ubicacion.lat, pet.ubicacion.lng)
+        snapshot?.misMascotas?.forEach { pet ->
+            val finalPos = livePetLocations[pet.mascotaId]
+                ?: pet.ubicacion?.let { LatLng(it.lat, it.lng) }
+            if (finalPos != null) {
                 result[pet.mascotaId] = Triple(finalPos, pet.fotoUrl, pet.tipo)
             }
+        }
+        result
+    }
+
+    // Mascotas ajenas extraviadas del snapshot (controladas por botón Perdidas)
+    val communitySnapshotLost = remember(snapshot, livePetLocations) {
+        val result = mutableMapOf<String, Triple<LatLng, String?, String>>()
+        snapshot?.desaparecidas?.forEach { pet ->
+            val finalPos = livePetLocations[pet.mascotaId]
+                ?: LatLng(pet.ubicacion.lat, pet.ubicacion.lng)
+            result[pet.mascotaId] = Triple(finalPos, pet.fotoUrl, pet.tipo)
         }
         result
     }
@@ -164,11 +170,19 @@ fun MapHomeScreen(
         tiposMascota.find { it.tipoId == speciesFilter }?.nombre
     }
 
-    val filteredPetsToDraw = remember(petsToDraw, speciesFilter, selectedTipoNombre) {
-        if (speciesFilter == null) petsToDraw
-        else petsToDraw.filter { (_, t) -> t.third.equals(selectedTipoNombre, ignoreCase = true) }
+    // Mis mascotas filtradas por especie
+    val filteredMyPets = remember(myPetsToDraw, speciesFilter, selectedTipoNombre) {
+        if (speciesFilter == null) myPetsToDraw
+        else myPetsToDraw.filter { (_, t) -> t.third.equals(selectedTipoNombre, ignoreCase = true) }
     }
 
+    // Ajenas del snapshot filtradas por especie (solo cuando showLostPets = true)
+    val filteredCommunitySnapshot = remember(communitySnapshotLost, speciesFilter, selectedTipoNombre) {
+        if (speciesFilter == null) communitySnapshotLost
+        else communitySnapshotLost.filter { (_, t) -> t.third.equals(selectedTipoNombre, ignoreCase = true) }
+    }
+
+    // Perdidas públicas del endpoint separado, filtradas por especie
     val filteredLostPets = remember(lostPets, speciesFilter, selectedTipoNombre) {
         if (speciesFilter == null) lostPets
         else lostPets.filter { it.tipo.equals(selectedTipoNombre, ignoreCase = true) }
@@ -178,28 +192,102 @@ fun MapHomeScreen(
     var showAssignPetsDialog by remember { mutableStateOf(false) }
     var showPaseoDialog by remember { mutableStateOf(false) }
     var mascotaPaseoActivoId by remember { mutableStateOf<String?>(null) }
+    var pendingPaseoMascotaId by remember { mutableStateOf<String?>(null) }
+    var feedbackDialog by remember { mutableStateOf<Triple<DialogType, String, String>?>(null) }
+    var isCenteredOnUser by remember { mutableStateOf(false) }
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     // --- MANEJO DE ERRORES ---
     LaunchedEffect(trackingError) {
         trackingError?.let {
-            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            feedbackDialog = Triple(DialogType.DANGER, "Error de rastreo", it)
             mapViewModel.clearTrackingError()
         }
     }
 
+    feedbackDialog?.let { (type, title, message) ->
+        PetFinderDialog(
+            type = type,
+            title = title,
+            message = message,
+            confirmText = "Entendido",
+            onConfirm = { feedbackDialog = null },
+            onDismiss = { feedbackDialog = null }
+        )
+    }
+
     // --- MANEJO DE PERMISOS ---
+    // Construye el array de permisos necesarios una sola vez
+    val requiredPermissions = remember {
+        buildList<String> {
+            addAll(PermissionHandler.locationPermissions)
+            PermissionHandler.notificationPermission?.let { add(it) }
+        }.toTypedArray()
+    }
+
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val granted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        hasLocationPermission = granted
+        // Si hay un paseo pendiente y ahora tenemos todos los permisos, iniciarlo automáticamente
+        if (PermissionHandler.isReadyForTracking(context)) {
+            pendingPaseoMascotaId?.let { id ->
+                mascotaPaseoActivoId = id
+                mapViewModel.togglePaseo(context, id)
+                pendingPaseoMascotaId = null
+            }
+        }
     }
 
+    // mascotaId actualmente resaltado en el mapa (persiste hasta que el usuario toca el mapa)
+    var highlightedMascotaId by remember { mutableStateOf<String?>(null) }
+
     LaunchedEffect(Unit) {
-        permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION))
+        permissionLauncher.launch(requiredPermissions)
     }
 
     val cameraPositionState = rememberCameraPositionState {
         position = CameraPosition.fromLatLngZoom(LatLng(-17.3895, -66.1568), 13f)
+    }
+
+    // Centrar en la ubicación real del usuario al obtener permisos por primera vez
+    LaunchedEffect(hasLocationPermission) {
+        if (!hasLocationPermission) return@LaunchedEffect
+        runCatching {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                if (location != null) {
+                    val userLatLng = LatLng(location.latitude, location.longitude)
+                    cameraPositionState.move(CameraUpdateFactory.newLatLngZoom(userLatLng, 15f))
+                    isCenteredOnUser = true
+                }
+            }
+        }
+    }
+
+    // Cuando el usuario arrastra el mapa, el botón vuelve a su estado inactivo
+    LaunchedEffect(cameraPositionState.isMoving) {
+        if (cameraPositionState.isMoving) isCenteredOnUser = false
+    }
+
+    // Centrar mapa en una mascota cuando se navega desde PetDetail
+    LaunchedEffect(focusMascotaId) {
+        val mascotaId = focusMascotaId ?: return@LaunchedEffect
+        val latLng = livePetLocations[mascotaId]
+            ?: snapshot?.misMascotas
+                ?.find { it.mascotaId == mascotaId }
+                ?.ubicacion
+                ?.let { LatLng(it.lat, it.lng) }
+        highlightedMascotaId = mascotaId
+        if (latLng != null) {
+            cameraPositionState.animate(
+                CameraUpdateFactory.newCameraPosition(
+                    CameraPosition.fromLatLngZoom(latLng, 17f)
+                ),
+                durationMs = 800
+            )
+        }
+        mapViewModel.clearFocus()
     }
 
     Scaffold { paddingValues ->
@@ -216,7 +304,10 @@ fun MapHomeScreen(
                     myLocationButtonEnabled = false,
                     zoomControlsEnabled = false
                 ),
-                onMapClick = { latLng -> mapViewModel.handleMapClick(latLng) }
+                onMapClick = { latLng ->
+                    highlightedMascotaId = null
+                    mapViewModel.handleMapClick(latLng)
+                }
             ) {
                 snapshot?.let { data ->
 
@@ -235,31 +326,73 @@ fun MapHomeScreen(
                         }
                     }
 
-                    // 2. MARCADORES DE MASCOTAS (filtrados por especie)
-                    filteredPetsToDraw.forEach { (mascotaId, petData) ->
+                    // 2. MIS MASCOTAS — siempre visibles (en_casa, en_paseo, extraviada)
+                    filteredMyPets.forEach { (mascotaId, petData) ->
                         key(mascotaId) {
                             val (pos, fotoUrl, _) = petData
-                            val isLost = mascotaId in desaparecidasIds
-                            val borderColor = if (isLost) Color(0xFFE53935) else PrimaryOrange
+                            val isLost = mascotaId in misExtraviadas
+                            val isHighlighted = mascotaId == highlightedMascotaId
+                            val borderColor = when {
+                                isHighlighted -> Color(0xFF1565C0)   // azul eléctrico al enfocarse
+                                isLost        -> Color(0xFFE53935)
+                                else          -> PrimaryOrange
+                            }
                             val customIcon = rememberCustomMarkerIcon(context, fotoUrl, borderColor)
-                            val recompensa = snapshot?.desaparecidas?.find { it.mascotaId == mascotaId }?.recompensa
-                                ?: snapshot?.misMascotas?.find { it.mascotaId == mascotaId }?.recompensa
-                            val snippetText = if (isLost) {
-                                buildString {
-                                    append("Mascota extraviada")
-                                    if (recompensa != null && recompensa > 0) append(" · Recompensa: Bs. %.0f".format(recompensa))
-                                }
+                            val recompensa = snapshot?.misMascotas
+                                ?.find { it.mascotaId == mascotaId }?.recompensa
+                            val snippetText = if (isLost) buildString {
+                                append("Mi mascota extraviada")
+                                if (recompensa != null && recompensa > 0)
+                                    append(" · Recompensa: Bs. %.0f".format(recompensa))
                             } else null
+
+                            // Aro pulsante debajo del marcador cuando está resaltado
+                            if (isHighlighted) {
+                                Circle(
+                                    center = pos,
+                                    radius = 30.0,
+                                    fillColor = Color(0x331565C0),
+                                    strokeColor = Color(0xFF1565C0),
+                                    strokeWidth = 3f
+                                )
+                            }
 
                             Marker(
                                 state = MarkerState(position = pos),
-                                title = if (isLost) "Extraviada" else "Mascota",
+                                title = if (isHighlighted) "📍 Tu mascota está aquí"
+                                        else if (isLost) "Extraviada"
+                                        else "Mi mascota",
                                 snippet = snippetText,
                                 icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(
                                     if (isLost) BitmapDescriptorFactory.HUE_RED
                                     else BitmapDescriptorFactory.HUE_ORANGE
                                 )
                             )
+                        }
+                    }
+
+                    // 2b. AJENAS DEL SNAPSHOT — solo cuando Perdidas está activo
+                    if (showLostPets) {
+                        filteredCommunitySnapshot.forEach { (mascotaId, petData) ->
+                            key("snap_$mascotaId") {
+                                val (pos, fotoUrl, _) = petData
+                                val customIcon = rememberCustomMarkerIcon(context, fotoUrl, Color(0xFFE53935))
+                                val recompensa = snapshot?.desaparecidas
+                                    ?.find { it.mascotaId == mascotaId }?.recompensa
+                                val snippetText = buildString {
+                                    append("Mascota extraviada")
+                                    if (recompensa != null && recompensa > 0)
+                                        append(" · Recompensa: Bs. %.0f".format(recompensa))
+                                }
+                                Marker(
+                                    state = MarkerState(position = pos),
+                                    title = "Extraviada",
+                                    snippet = snippetText,
+                                    icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(
+                                        BitmapDescriptorFactory.HUE_RED
+                                    )
+                                )
+                            }
                         }
                     }
 
@@ -291,9 +424,10 @@ fun MapHomeScreen(
                     }
                 }
 
-                // 4. MASCOTAS PERDIDAS PÚBLICAS — excluye las que ya están en filteredPetsToDraw
+                // 4. MASCOTAS PERDIDAS PÚBLICAS (endpoint separado) — excluye las mías y las del snapshot
                 if (showLostPets) {
-                    filteredLostPets.filter { it.mascotaId !in filteredPetsToDraw }.forEach { lost ->
+                    val yaRenderizadas = filteredMyPets.keys + filteredCommunitySnapshot.keys
+                    filteredLostPets.filter { it.mascotaId !in yaRenderizadas }.forEach { lost ->
                         key("lost_${lost.mascotaId}") {
                             val pos = LatLng(lost.ubicacion.lat, lost.ubicacion.lng)
                             val customIcon = rememberCustomMarkerIcon(context, lost.fotoUrl, Color(0xFFE53935))
@@ -328,168 +462,207 @@ fun MapHomeScreen(
                 }
             }
 
-            // --- BARRA SUPERIOR ---
-            // Fila única: [👤 Perfil] ··· [Perdidas] [Admin] ··· [📍 Mi ubicación]
+            // --- CONTROLES SUPERIORES (modo normal) ---
             if (!isDrawingMode) {
-                Row(
+                Column(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(top = 8.dp)
                 ) {
-                    // Perfil — izquierda
-                    SmallFloatingActionButton(
-                        onClick = onNavigateToProfile,
-                        containerColor = Color.White,
-                        contentColor = PrimaryOrange,
-                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
-                    ) {
-                        Icon(Icons.Default.Person, contentDescription = "Mi perfil")
-                    }
-
-                    // Chips centrales — Perdidas + Admin
+                    // Fila 1: [👤 Perfil] ··· [Perdidas][Admin?] ··· [🚶 Paseo][📍 Ubicación]
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Chip Perdidas
-                        Surface(
-                            modifier = Modifier
-                                .shadow(6.dp, RoundedCornerShape(50.dp))
-                                .clickable { mapViewModel.toggleLostPetsLayer() },
-                            shape = RoundedCornerShape(50.dp),
-                            color = if (showLostPets) Color(0xFFE53935) else Color.White
+                        // Izquierda: Perfil
+                        SmallFloatingActionButton(
+                            onClick = onNavigateToProfile,
+                            containerColor = Color.White,
+                            contentColor = PrimaryOrange,
+                            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Search,
-                                    contentDescription = "Mascotas perdidas",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = if (showLostPets) Color.White else Color(0xFFE53935)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Perdidas",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (showLostPets) Color.White else Color(0xFFE53935)
-                                )
-                            }
+                            Icon(Icons.Default.Person, contentDescription = "Mi perfil")
                         }
 
-                        // Chip Admin (solo si aplica)
-                        if (isAdmin) {
+                        // Centro: chips de Perdidas + Admin
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Surface(
-                                modifier = Modifier.shadow(6.dp, RoundedCornerShape(50.dp)),
+                                modifier = Modifier
+                                    .shadow(6.dp, RoundedCornerShape(50.dp))
+                                    .clickable { mapViewModel.toggleLostPetsLayer() },
                                 shape = RoundedCornerShape(50.dp),
-                                color = Color(0xFF6200EE)
+                                color = if (showLostPets) Color(0xFFE53935) else Color.White
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        Icons.Default.AdminPanelSettings,
-                                        contentDescription = null,
+                                        Icons.Default.Search,
+                                        contentDescription = "Mascotas perdidas",
                                         modifier = Modifier.size(16.dp),
-                                        tint = Color.White
+                                        tint = if (showLostPets) Color.White else Color(0xFFE53935)
                                     )
-                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        "Admin",
+                                        "Perdidas",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White
+                                        color = if (showLostPets) Color.White else Color(0xFFE53935)
                                     )
                                 }
                             }
-                        }
-                    }
 
-                    // Mi ubicación — derecha (reemplaza el botón nativo de Google)
-                    SmallFloatingActionButton(
-                        onClick = {
-                            cameraPositionState.move(
-                                CameraUpdateFactory.newLatLngZoom(LatLng(-17.3895, -66.1568), 14f)
-                            )
-                        },
-                        containerColor = Color.White,
-                        contentColor = PrimaryOrange,
-                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
-                    ) {
-                        Icon(Icons.Default.MyLocation, contentDescription = "Mi ubicación")
-                    }
-                }
-
-                // Filtros por especie — debajo de la barra superior, centrado
-                if (tiposMascota.isNotEmpty()) {
-                    LazyRow(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .statusBarsPadding()
-                            .padding(top = 72.dp)
-                            .fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        item {
-                            FilterChip(
-                                selected = speciesFilter == null,
-                                onClick = { mapViewModel.setSpeciesFilter(null) },
-                                label = { Text("Todos", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = PrimaryOrange,
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-                        items(tiposMascota) { tipo ->
-                            FilterChip(
-                                selected = speciesFilter == tipo.tipoId,
-                                onClick = { mapViewModel.setSpeciesFilter(if (speciesFilter == tipo.tipoId) null else tipo.tipoId) },
-                                label = { Text(tipo.nombre, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.SemiBold) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = PrimaryOrange,
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-                    }
-                }
-
-                // FAB Paseo — debajo de la barra superior, lado derecho
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .statusBarsPadding()
-                        .padding(top = 72.dp, end = 12.dp)
-                ) {
-                    ExtendedFloatingActionButton(
-                        onClick = {
-                            if (isTracking) {
-                                mascotaPaseoActivoId?.let { mapViewModel.togglePaseo(context, it) }
-                                mascotaPaseoActivoId = null
-                            } else {
-                                showPaseoDialog = true
+                            if (isAdmin) {
+                                Surface(
+                                    modifier = Modifier.shadow(6.dp, RoundedCornerShape(50.dp)),
+                                    shape = RoundedCornerShape(50.dp),
+                                    color = Color(0xFF6200EE)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            Icons.Default.AdminPanelSettings,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = Color.White
+                                        )
+                                        Spacer(modifier = Modifier.width(5.dp))
+                                        Text(
+                                            "Admin",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
                             }
-                        },
-                        containerColor = if (isTracking) MaterialTheme.colorScheme.error else PrimaryOrange,
-                        contentColor = Color.White,
-                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
-                        icon = {
-                            Icon(
-                                if (isTracking) Icons.Default.Stop else Icons.AutoMirrored.Filled.DirectionsWalk,
-                                contentDescription = null
+                        }
+
+                        // Derecha: Paseo + Ubicación
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            ExtendedFloatingActionButton(
+                                onClick = {
+                                    if (isTracking) {
+                                        mascotaPaseoActivoId?.let { mapViewModel.togglePaseo(context, it) }
+                                        mascotaPaseoActivoId = null
+                                    } else {
+                                        showPaseoDialog = true
+                                    }
+                                },
+                                containerColor = if (isTracking) MaterialTheme.colorScheme.error else PrimaryOrange,
+                                contentColor = Color.White,
+                                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 6.dp),
+                                icon = {
+                                    Icon(
+                                        if (isTracking) Icons.Default.Stop
+                                        else Icons.AutoMirrored.Filled.DirectionsWalk,
+                                        contentDescription = null
+                                    )
+                                },
+                                text = {
+                                    Text(
+                                        if (isTracking) "Detener" else "Paseo",
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             )
-                        },
-                        text = { Text(if (isTracking) "Detener" else "Paseo", fontWeight = FontWeight.Bold) }
-                    )
+
+                            SmallFloatingActionButton(
+                                onClick = {
+                                    if (hasLocationPermission) {
+                                        fusedLocationClient.lastLocation
+                                            .addOnSuccessListener { location ->
+                                                if (location != null) {
+                                                    cameraPositionState.move(
+                                                        CameraUpdateFactory.newLatLngZoom(
+                                                            LatLng(location.latitude, location.longitude), 16f
+                                                        )
+                                                    )
+                                                    isCenteredOnUser = true
+                                                } else {
+                                                    feedbackDialog = Triple(
+                                                        DialogType.INFO,
+                                                        "Ubicación no disponible",
+                                                        "Activa el GPS y vuelve a intentarlo."
+                                                    )
+                                                }
+                                            }
+                                    } else {
+                                        permissionLauncher.launch(requiredPermissions)
+                                    }
+                                },
+                                containerColor = if (isCenteredOnUser) PrimaryOrange else Color.White,
+                                contentColor = if (isCenteredOnUser) Color.White else PrimaryOrange,
+                                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                            ) {
+                                Icon(Icons.Default.MyLocation, contentDescription = "Mi ubicación")
+                            }
+                        }
+                    }
+
+                    // Fila 2: filtros de especie — full width sin obstáculos
+                    if (tiposMascota.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            item {
+                                FilterChip(
+                                    selected = speciesFilter == null,
+                                    onClick = { mapViewModel.setSpeciesFilter(null) },
+                                    label = {
+                                        Text(
+                                            "Todos",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PrimaryOrange,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+                            items(tiposMascota) { tipo ->
+                                FilterChip(
+                                    selected = speciesFilter == tipo.tipoId,
+                                    onClick = {
+                                        mapViewModel.setSpeciesFilter(
+                                            if (speciesFilter == tipo.tipoId) null else tipo.tipoId
+                                        )
+                                    },
+                                    label = {
+                                        Text(
+                                            tipo.nombre,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = PrimaryOrange,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -499,9 +672,34 @@ fun MapHomeScreen(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .navigationBarsPadding()
-                        .padding(bottom = 20.dp, end = 16.dp),
+                        .padding(bottom = 100.dp, end = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
+                    // Brújula — rota con el mapa, toca para volver al norte
+                    val bearing = cameraPositionState.position.bearing
+                    if (bearing != 0f) {
+                        SmallFloatingActionButton(
+                            onClick = {
+                                cameraPositionState.move(
+                                    CameraUpdateFactory.newCameraPosition(
+                                        CameraPosition.builder(cameraPositionState.position)
+                                            .bearing(0f)
+                                            .build()
+                                    )
+                                )
+                            },
+                            containerColor = Color.White,
+                            contentColor = PrimaryOrange,
+                            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Explore,
+                                contentDescription = "Orientar al norte",
+                                modifier = Modifier.graphicsLayer { rotationZ = -bearing }
+                            )
+                        }
+                    }
+
                     SmallFloatingActionButton(
                         onClick = { mapViewModel.startDrawing("circulo") },
                         containerColor = Color.White,
@@ -672,10 +870,16 @@ fun MapHomeScreen(
                 confirmText = "Comenzar",
                 dismissText = "Cancelar",
                 onConfirm = {
-                    selectedId?.let {
-                        mascotaPaseoActivoId = it
-                        mapViewModel.togglePaseo(context, it)
+                    selectedId?.let { id ->
                         showPaseoDialog = false
+                        if (PermissionHandler.isReadyForTracking(context)) {
+                            mascotaPaseoActivoId = id
+                            mapViewModel.togglePaseo(context, id)
+                        } else {
+                            // Guarda el ID y pide permisos — cuando se concedan se inicia automáticamente
+                            pendingPaseoMascotaId = id
+                            permissionLauncher.launch(requiredPermissions)
+                        }
                     }
                 },
                 onDismiss = { showPaseoDialog = false },

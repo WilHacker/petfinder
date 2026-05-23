@@ -4,6 +4,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,7 +35,10 @@ fun LoginScreen(
     val context = LocalContext.current
     val correo by viewModel.correo.collectAsStateWithLifecycle()
     val clave by viewModel.clave.collectAsStateWithLifecycle()
+    val correoError by viewModel.correoError.collectAsStateWithLifecycle()
+    val claveError by viewModel.claveError.collectAsStateWithLifecycle()
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var passwordVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState) {
         if (uiState is LoginViewModel.LoginState.Success) {
@@ -97,32 +104,32 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Campo de Email Minimalista
+            // Campo de Email
             PetFinderTextField(
                 value = correo,
                 onValueChange = { viewModel.onCorreoChange(it) },
-                placeholder = "Tu correo electrónico"
+                placeholder = "Tu correo electrónico",
+                errorMessage = correoError
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Campo de Contraseña Minimalista
+            // Campo de Contraseña con toggle de visibilidad
             PetFinderTextField(
                 value = clave,
                 onValueChange = { viewModel.onClaveChange(it) },
-                placeholder = ".........",
-                visualTransformation = PasswordVisualTransformation(),
+                placeholder = "Contraseña",
+                visualTransformation = if (passwordVisible) VisualTransformation.None
+                    else PasswordVisualTransformation(),
+                errorMessage = claveError,
                 trailingIcon = {
-                    TextButton(
-                        onClick = { /* Aquí iría la lógica de recuperar clave */ },
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text(
-                            text = "¿Olvidaste tu clave?",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                color = MaterialTheme.colorScheme.primary
-                            ),
-                            modifier = Modifier.padding(end = 16.dp)
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Default.VisibilityOff
+                                else Icons.Default.Visibility,
+                            contentDescription = if (passwordVisible) "Ocultar contraseña"
+                                else "Mostrar contraseña",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
