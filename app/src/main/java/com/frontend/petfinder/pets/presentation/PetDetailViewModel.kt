@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import retrofit2.HttpException
 import java.io.File
 import java.io.FileOutputStream
 
@@ -218,25 +220,52 @@ class PetDetailViewModel : ViewModel() {
     private val _communityAlertSending = MutableStateFlow(false)
     val communityAlertSending: StateFlow<Boolean> = _communityAlertSending.asStateFlow()
 
+    // Toast corto para éxito; null = no mostrar
     private val _communityAlertResult = MutableStateFlow<String?>(null)
     val communityAlertResult: StateFlow<String?> = _communityAlertResult.asStateFlow()
+
+    // Dialog para razon/errores con texto largo
+    data class CommunityAlertDialog(val title: String, val message: String)
+    private val _communityAlertDialog = MutableStateFlow<CommunityAlertDialog?>(null)
+    val communityAlertDialog: StateFlow<CommunityAlertDialog?> = _communityAlertDialog.asStateFlow()
 
     fun sendCommunityAlert(petId: String, radio: Int? = null) {
         viewModelScope.launch {
             _communityAlertSending.value = true
             PetRepository.sendCommunityAlert(petId, radio).fold(
                 onSuccess = { resp ->
-                    val alertados = resp.alertados
-                    _communityAlertResult.value = if (alertados != null && alertados > 0)
-                        "Alerta enviada a $alertados usuarios cercanos"
-                    else
-                        resp.mensaje ?: "Alerta comunitaria enviada"
+                    if ((resp.alertados ?: 0) > 0) {
+                        _communityAlertResult.value = resp.mensaje ?: "Alerta enviada a ${resp.alertados} usuario(s) cercano(s)"
+                    } else {
+                        _communityAlertDialog.value = CommunityAlertDialog(
+                            title = resp.mensaje ?: "Sin usuarios notificados",
+                            message = resp.razon ?: "No hubo usuarios cercanos para notificar."
+                        )
+                    }
                 },
-                onFailure = { _communityAlertResult.value = "No se pudo enviar la alerta" }
+                onFailure = { e ->
+                    val serverMsg = (e as? HttpException)?.let { httpEx ->
+                        runCatching {
+                            val body = httpEx.response()?.errorBody()?.string()
+                            val json = JSONObject(body ?: "")
+                            val raw = json.opt("message")
+                            when {
+                                raw is String && raw.isNotBlank() -> raw
+                                raw is org.json.JSONArray && raw.length() > 0 ->
+                                    (0 until raw.length()).joinToString("\n") { raw.getString(it) }
+                                else -> null
+                            }
+                        }.getOrNull()
+                    }
+                    val msg = serverMsg ?: "No se pudo enviar la alerta comunitaria."
+                    _communityAlertDialog.value = CommunityAlertDialog(title = "Aviso", message = msg)
+                }
             )
             _communityAlertSending.value = false
         }
     }
+
+    fun clearCommunityAlertDialog() { _communityAlertDialog.value = null }
 
     fun clearCommunityAlertResult() { _communityAlertResult.value = null }
 

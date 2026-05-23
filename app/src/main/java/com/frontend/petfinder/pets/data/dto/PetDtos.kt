@@ -189,8 +189,9 @@ data class CommunityAlertRequest(
 )
 
 data class CommunityAlertResponse(
-    @SerializedName("mensaje") val mensaje: String?,
-    @SerializedName("alertados") val alertados: Int? = null
+    @SerializedName("message") val mensaje: String?,
+    @SerializedName("usuariosNotificados") val alertados: Int? = null,
+    @SerializedName("razon") val razon: String? = null
 )
 
 data class UpdateRewardRequest(

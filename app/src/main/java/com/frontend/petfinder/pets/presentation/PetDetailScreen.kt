@@ -121,6 +121,7 @@ fun PetDetailScreen(
     val sightingSubmitting by viewModel.sightingSubmitting.collectAsStateWithLifecycle()
     val communityAlertSending by viewModel.communityAlertSending.collectAsStateWithLifecycle()
     val communityAlertResult by viewModel.communityAlertResult.collectAsStateWithLifecycle()
+    val communityAlertDialog by viewModel.communityAlertDialog.collectAsStateWithLifecycle()
     val rewardUpdating by viewModel.rewardUpdating.collectAsStateWithLifecycle()
     val rewardResult by viewModel.rewardResult.collectAsStateWithLifecycle()
 
@@ -166,6 +167,20 @@ fun PetDetailScreen(
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearRewardResult()
         }
+    }
+
+    // ── Dialog alerta comunitaria (razon / error) ──────────────────────────
+    communityAlertDialog?.let { dialog ->
+        AlertDialog(
+            onDismissRequest = { viewModel.clearCommunityAlertDialog() },
+            confirmButton = {
+                TextButton(onClick = { viewModel.clearCommunityAlertDialog() }) {
+                    Text("Entendido", color = PrimaryOrange)
+                }
+            },
+            title = { Text(dialog.title, fontWeight = FontWeight.Bold) },
+            text = { Text(dialog.message, style = MaterialTheme.typography.bodyMedium) }
+        )
     }
 
     // ── Diálogo confirmación "extraviada" ──────────────────────────────────
@@ -456,10 +471,7 @@ fun PetDetailScreen(
     // ── Sheet: recompensa del reporte activo ──────────────────────────────
     if (activeModal is PetDetailModal.RewardSheet) {
         val recompensaActual: Double? = remember(reports) {
-            reports
-                .filter { it.estadoReporte.lowercase().let { s -> s == "activo" || s == "perdido" } }
-                .firstOrNull()
-                ?.recompensa
+            reports.firstOrNull()?.recompensa
         }
         var rewardInput by remember { mutableStateOf(recompensaActual?.let { if (it > 0) "%.0f".format(it) else "" } ?: "") }
         var sinRecompensa by remember { mutableStateOf(recompensaActual == 0.0) }
@@ -643,7 +655,7 @@ fun PetDetailScreen(
                 Button(
                     onClick = {
                         val petId = (state as? PetDetailViewModel.DetailState.Success)?.pet?.mascotaId ?: mascotaId
-                        viewModel.sendCommunityAlert(petId, radioSlider.toInt())
+                        viewModel.sendCommunityAlert(petId, radioSlider.toInt() * 1000)
                         activeModal = PetDetailModal.None
                     },
                     enabled = !communityAlertSending,
@@ -901,9 +913,7 @@ private fun PetDetailContent(
 
             // Alerta si extraviada
             if (estado == "extraviada") {
-                val activeReport = reports
-                    .filter { it.estadoReporte.lowercase().let { s -> s == "activo" || s == "perdido" } }
-                    .firstOrNull()
+                val activeReport = reports.firstOrNull()
                 val recompensaActiva: Double? = activeReport?.recompensa
 
                 Surface(
@@ -929,28 +939,6 @@ private fun PetDetailContent(
                                 color = Color(0xFFE53935).copy(alpha = 0.8f),
                                 style = MaterialTheme.typography.bodySmall
                             )
-                        }
-                        if (recompensaActiva != null && recompensaActiva > 0) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFFFF8E1)
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        "🏆",
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                    Text(
-                                        "Bs. %.0f".format(recompensaActiva),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFFF57F17)
-                                    )
-                                }
-                            }
                         }
                     }
                 }
