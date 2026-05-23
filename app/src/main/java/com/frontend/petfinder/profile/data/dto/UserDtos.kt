@@ -58,3 +58,27 @@ data class LocationRequest(
 data class FcmTokenRequest(
     @SerializedName("tokenFcm") val tokenFcm: String
 )
+
+// =============================================================================
+// DTOs — Perfil público del usuario (GET /users/{personaId}/card)
+// =============================================================================
+
+data class UserCardContactoDto(
+    @SerializedName("tipo") val tipo: String,
+    @SerializedName("valor") val valor: String
+)
+
+data class UserCardPetDto(
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("nombre") val nombre: String,
+    @SerializedName("estado") val estado: String,
+    @SerializedName("fotoUrl") val fotoUrl: String?
+)
+
+data class UserCardDto(
+    @SerializedName("personaId") val personaId: String,
+    @SerializedName("nombreCompleto") val nombreCompleto: String,
+    @SerializedName("fotoPerfilUrl") val fotoPerfilUrl: String?,
+    @SerializedName("contactos") val contactos: List<UserCardContactoDto> = emptyList(),
+    @SerializedName("mascotas") val mascotas: List<UserCardPetDto> = emptyList()
+)

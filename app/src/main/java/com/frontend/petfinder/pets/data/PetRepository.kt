@@ -17,9 +17,12 @@ object PetRepository {
 
     suspend fun getPetQrCode(petId: String, size: Int? = null): Result<String> = runCatching {
         val r = ApiServices.pets.getPetQrCode(petId, size)
-        if (r.isSuccessful) r.body()?.string()?.replace("\"", "")
-            ?: throw IllegalStateException("QR body vacío")
-        else throw HttpException(r)
+        if (r.isSuccessful) {
+            val raw = r.body()?.string()?.trim()?.replace("\"", "")
+                ?: throw IllegalStateException("QR body vacío")
+            // Strip data URI prefix if server returns "data:image/...;base64,<data>"
+            if (raw.contains("base64,")) raw.substringAfter("base64,").trim() else raw
+        } else throw HttpException(r)
     }
 
     suspend fun getPublicPetCard(token: String): Result<PublicPetCardDto> = runCatching {
@@ -47,8 +50,8 @@ object PetRepository {
         if (r.isSuccessful) r.body() ?: emptyList() else throw HttpException(r)
     }
 
-    suspend fun updatePetStatus(petId: String, estado: String): Result<Unit> = runCatching {
-        val r = ApiServices.pets.updatePetStatus(petId, UpdateStatusRequest(estado))
+    suspend fun updatePetStatus(petId: String, estado: String, recompensa: Double? = null): Result<Unit> = runCatching {
+        val r = ApiServices.pets.updatePetStatus(petId, UpdateStatusRequest(estado, recompensa))
         if (r.isSuccessful) Unit else throw HttpException(r)
     }
 
@@ -97,13 +100,25 @@ object PetRepository {
         Unit
     }
 
-    suspend fun addOwner(petId: String, personaId: String, tipoRelacion: String): Result<PetOwnerRelationDto> = runCatching {
-        val r = ApiServices.pets.addPetOwner(petId, AddOwnerRequest(personaId = personaId, tipoRelacion = tipoRelacion))
+    suspend fun addOwner(petId: String, correoElectronico: String, tipoRelacion: String): Result<PetOwnerRelationDto> = runCatching {
+        val r = ApiServices.pets.addPetOwner(petId, AddOwnerRequest(correoElectronico = correoElectronico, tipoRelacion = tipoRelacion))
         if (r.isSuccessful) r.body()!! else throw HttpException(r)
     }
 
     suspend fun removeOwner(petId: String, personaId: String): Result<Unit> = runCatching {
         val r = ApiServices.pets.removePetOwner(petId, personaId)
         if (r.isSuccessful) Unit else throw HttpException(r)
+    }
+
+    suspend fun updateReward(petId: String, recompensa: Double): Result<UpdateRewardResponse> = runCatching {
+        val r = ApiServices.pets.updateReward(petId, UpdateRewardRequest(recompensa))
+        if (r.isSuccessful) r.body() ?: UpdateRewardResponse(petId, recompensa)
+        else throw HttpException(r)
+    }
+
+    suspend fun sendCommunityAlert(petId: String, radio: Int? = null): Result<CommunityAlertResponse> = runCatching {
+        val r = ApiServices.pets.sendCommunityAlert(petId, CommunityAlertRequest(radio))
+        if (r.isSuccessful) r.body() ?: CommunityAlertResponse(mensaje = "Alerta comunitaria enviada")
+        else throw HttpException(r)
     }
 }

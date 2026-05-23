@@ -17,7 +17,6 @@ import com.frontend.petfinder.pets.data.dto.PetReportDto
 import com.frontend.petfinder.pets.data.dto.PetScanDto
 import com.frontend.petfinder.sightings.data.SightingDto
 import com.frontend.petfinder.sightings.data.SightingsRepository
-import com.frontend.petfinder.sightings.data.CreateSightingRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,10 +86,10 @@ class PetDetailViewModel : ViewModel() {
         }
     }
 
-    fun reportSighting(petId: String, descripcion: String, lat: Double? = null, lng: Double? = null) {
+    fun reportSighting(petId: String, lat: Double, lng: Double, mensajeRescatista: String? = null) {
         viewModelScope.launch {
             _sightingSubmitting.value = true
-            SightingsRepository.reportSighting(petId, CreateSightingRequest(descripcion = descripcion.ifBlank { null }, lat = lat, lng = lng)).fold(
+            SightingsRepository.reportSighting(petId, lat, lng, mensajeRescatista).fold(
                 onSuccess = {
                     _sightings.value = listOf(it) + _sightings.value
                     _sightingError.value = null
@@ -101,7 +100,7 @@ class PetDetailViewModel : ViewModel() {
         }
     }
 
-    fun sendThanks(avistamientoId: Int, mensaje: String?) {
+    fun sendThanks(avistamientoId: String, mensaje: String?) {
         viewModelScope.launch {
             SightingsRepository.sendThanks(avistamientoId, mensaje).fold(
                 onSuccess = { _sightingError.value = null },
@@ -170,11 +169,11 @@ class PetDetailViewModel : ViewModel() {
     private val _ownerLoading = MutableStateFlow(false)
     val ownerLoading: StateFlow<Boolean> = _ownerLoading.asStateFlow()
 
-    fun addOwner(petId: String, personaId: String, tipoRelacion: String = "Cuidador") {
-        if (personaId.isBlank()) { _ownerError.value = "Ingresa el ID del usuario"; return }
+    fun addOwner(petId: String, correoElectronico: String, tipoRelacion: String = "Cuidador") {
+        if (correoElectronico.isBlank()) { _ownerError.value = "Ingresa el correo electrónico"; return }
         viewModelScope.launch {
             _ownerLoading.value = true
-            PetRepository.addOwner(petId, personaId.trim(), tipoRelacion).fold(
+            PetRepository.addOwner(petId, correoElectronico.trim(), tipoRelacion).fold(
                 onSuccess = { load(petId) },
                 onFailure = { e -> _ownerError.value = "No se pudo agregar: ${e.message?.take(60)}" }
             )
@@ -215,6 +214,63 @@ class PetDetailViewModel : ViewModel() {
     fun clearQrDownloadResult() {
         _qrDownloadResult.value = null
     }
+
+    private val _communityAlertSending = MutableStateFlow(false)
+    val communityAlertSending: StateFlow<Boolean> = _communityAlertSending.asStateFlow()
+
+    private val _communityAlertResult = MutableStateFlow<String?>(null)
+    val communityAlertResult: StateFlow<String?> = _communityAlertResult.asStateFlow()
+
+    fun sendCommunityAlert(petId: String, radio: Int? = null) {
+        viewModelScope.launch {
+            _communityAlertSending.value = true
+            PetRepository.sendCommunityAlert(petId, radio).fold(
+                onSuccess = { resp ->
+                    val alertados = resp.alertados
+                    _communityAlertResult.value = if (alertados != null && alertados > 0)
+                        "Alerta enviada a $alertados usuarios cercanos"
+                    else
+                        resp.mensaje ?: "Alerta comunitaria enviada"
+                },
+                onFailure = { _communityAlertResult.value = "No se pudo enviar la alerta" }
+            )
+            _communityAlertSending.value = false
+        }
+    }
+
+    fun clearCommunityAlertResult() { _communityAlertResult.value = null }
+
+    private val _rewardUpdating = MutableStateFlow(false)
+    val rewardUpdating: StateFlow<Boolean> = _rewardUpdating.asStateFlow()
+
+    private val _rewardResult = MutableStateFlow<String?>(null)
+    val rewardResult: StateFlow<String?> = _rewardResult.asStateFlow()
+
+    fun updateReward(petId: String, recompensa: Double) {
+        viewModelScope.launch {
+            _rewardUpdating.value = true
+            PetRepository.updateReward(petId, recompensa).fold(
+                onSuccess = {
+                    _rewardResult.value = if (recompensa > 0)
+                        "Recompensa actualizada: Bs. %.0f".format(recompensa)
+                    else
+                        "Recompensa eliminada"
+                    load(petId)
+                },
+                onFailure = { e ->
+                    val msg = when {
+                        e.message?.contains("400") == true -> "La mascota no tiene un reporte activo"
+                        e.message?.contains("403") == true -> "Sin permiso para modificar la recompensa"
+                        else -> "No se pudo actualizar la recompensa"
+                    }
+                    _rewardResult.value = msg
+                }
+            )
+            _rewardUpdating.value = false
+        }
+    }
+
+    fun clearRewardResult() { _rewardResult.value = null }
 
     private fun saveBase64ImageToGallery(context: Context, base64: String, fileName: String): Boolean {
         return try {

@@ -51,10 +51,10 @@ interface PetApi {
         @Query("size") size: Int? = null
     ): Response<ResponseBody>
 
-    @GET("qr/{token}")
+    @GET("pets/public/{token}")
     suspend fun getPublicPetCard(@Path("token") token: String): Response<PublicPetCardDto>
 
-    @POST("qr/{token}/scan")
+    @POST("pets/public/{token}/scan")
     suspend fun registerQrScan(
         @Path("token") token: String,
         @Body request: QrScanRequest
@@ -103,6 +103,22 @@ interface PetApi {
         @Path("id") petId: String,
         @Path("personaId") personaId: String
     ): Response<Map<String, String>>
+
+    // --- Recompensa del reporte activo ---
+
+    @PUT("pets/{id}/report/reward")
+    suspend fun updateReward(
+        @Path("id") petId: String,
+        @Body request: UpdateRewardRequest
+    ): Response<UpdateRewardResponse>
+
+    // --- Alertas comunitarias ---
+
+    @POST("pets/{id}/alert/community")
+    suspend fun sendCommunityAlert(
+        @Path("id") petId: String,
+        @Body request: CommunityAlertRequest
+    ): Response<CommunityAlertResponse>
 
     // --- Historial QR y reportes ---
 

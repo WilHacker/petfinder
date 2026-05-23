@@ -92,6 +92,12 @@ data class RegistroMedicoPublicoDto(
     @SerializedName("veterinario") val veterinario: String? = null
 )
 
+data class ReporteActivoDto(
+    @SerializedName("reporteId") val reporteId: Int,
+    @SerializedName("recompensa") val recompensa: Double?,
+    @SerializedName("fechaPerdida") val fechaPerdida: String?
+)
+
 data class PublicPetCardDto(
     @SerializedName("mascotaId") val mascotaId: String,
     @SerializedName("nombre") val nombre: String,
@@ -101,7 +107,7 @@ data class PublicPetCardDto(
     @SerializedName("rasgosParticulares") val rasgosParticulares: String?,
     @SerializedName("estado") val estado: String,
     @SerializedName("estaExtraviada") val estaExtraviada: Boolean,
-    @SerializedName("recompensa") val recompensa: Double? = null,
+    @SerializedName("reporteActivo") val reporteActivo: ReporteActivoDto? = null,
     @SerializedName("fotos") val fotos: List<FotoPublicaDto>?,
     @SerializedName("fichaMedica") val fichaMedica: FichaMedicaPublicaDto?,
     @SerializedName("registrosMedicos") val registrosMedicos: List<RegistroMedicoPublicoDto>?,
@@ -139,7 +145,7 @@ data class PetScanDto(
 data class PetReportDto(
     @SerializedName("reporte_id") val reporteId: Int,
     @SerializedName("fecha_perdida") val fechaPerdida: String,
-    @SerializedName("recompensa") val recompensa: String,
+    @SerializedName("recompensa") val recompensa: Double?,
     @SerializedName("estado_reporte") val estadoReporte: String,
     @SerializedName("lat") val lat: Double?,
     @SerializedName("lng") val lng: Double?
@@ -150,7 +156,8 @@ data class PetReportDto(
 // =============================================================================
 
 data class UpdateStatusRequest(
-    @SerializedName("estado") val estado: String // en_casa | en_paseo | extraviada | recuperada
+    @SerializedName("estado") val estado: String, // en_casa | en_paseo | extraviada | recuperada
+    @SerializedName("recompensa") val recompensa: Double? = null
 )
 
 data class UpdateLocationRequest(
@@ -166,7 +173,7 @@ data class UpdatePetRequest(
 )
 
 data class AddOwnerRequest(
-    @SerializedName("personaId") val personaId: String,
+    @SerializedName("correoElectronico") val correoElectronico: String,
     @SerializedName("tipoRelacion") val tipoRelacion: String = "Cuidador",
     @SerializedName("recibeAlertas") val recibeAlertas: Boolean = true,
     @SerializedName("mostrarEnQr") val mostrarEnQr: Boolean = true
@@ -175,6 +182,24 @@ data class AddOwnerRequest(
 data class QrScanRequest(
     @SerializedName("lat") val lat: Double?,
     @SerializedName("lng") val lng: Double?
+)
+
+data class CommunityAlertRequest(
+    @SerializedName("radio") val radio: Int? = null
+)
+
+data class CommunityAlertResponse(
+    @SerializedName("mensaje") val mensaje: String?,
+    @SerializedName("alertados") val alertados: Int? = null
+)
+
+data class UpdateRewardRequest(
+    @SerializedName("recompensa") val recompensa: Double
+)
+
+data class UpdateRewardResponse(
+    @SerializedName("mascotaId") val mascotaId: String,
+    @SerializedName("recompensa") val recompensa: Double
 )
 
 // =============================================================================

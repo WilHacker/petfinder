@@ -1,28 +1,31 @@
 package com.frontend.petfinder.sightings.data
 
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.Response
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Path
+import retrofit2.http.*
 
 interface SightingsApi {
+
+    @Multipart
+    @POST("sightings/pets/{petId}")
+    suspend fun reportSighting(
+        @Path("petId") petId: String,
+        @Part("lat") lat: RequestBody,
+        @Part("lng") lng: RequestBody,
+        @Part("mensajeRescatista") mensajeRescatista: RequestBody?,
+        @Part foto: MultipartBody.Part?
+    ): Response<SightingDto>
 
     @GET("sightings/pets/{petId}")
     suspend fun getSightings(@Path("petId") petId: String): Response<List<SightingDto>>
 
-    @POST("sightings/pets/{petId}")
-    suspend fun reportSighting(
-        @Path("petId") petId: String,
-        @Body request: CreateSightingRequest
-    ): Response<SightingDto>
-
-    @GET("sightings/{id}/thanks")
-    suspend fun getThanks(@Path("id") avistamientoId: Int): Response<List<ThanksDto>>
-
     @POST("sightings/{id}/thanks")
     suspend fun sendThanks(
-        @Path("id") avistamientoId: Int,
+        @Path("id") avistamientoId: String,
         @Body request: CreateThanksRequest
     ): Response<ThanksDto>
+
+    @GET("sightings/{id}/thanks")
+    suspend fun getThanks(@Path("id") avistamientoId: String): Response<List<ThanksDto>>
 }

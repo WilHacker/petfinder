@@ -138,26 +138,40 @@ fun MapHomeScreen(
         ids
     }
 
+    // mascotaId → (position, fotoUrl, tipo)
     val petsToDraw = remember(snapshot, livePetLocations) {
-        val result = mutableMapOf<String, Pair<LatLng, String?>>()
+        val result = mutableMapOf<String, Triple<LatLng, String?, String>>()
         snapshot?.let { data ->
-            // Mascotas propias con ubicación conocida
             data.misMascotas.forEach { pet ->
                 val livePos = livePetLocations[pet.mascotaId]
                 val explicitPos = pet.ubicacion?.let { LatLng(it.lat, it.lng) }
                 val finalPos = livePos ?: explicitPos
                 if (finalPos != null) {
-                    result[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
+                    result[pet.mascotaId] = Triple(finalPos, pet.fotoUrl, pet.tipo)
                 }
             }
-            // Desaparecidas: posición GPS exacta del reporte (sobreescribe si ya estaba en misMascotas)
             data.desaparecidas.forEach { pet ->
                 val livePos = livePetLocations[pet.mascotaId]
                 val finalPos = livePos ?: LatLng(pet.ubicacion.lat, pet.ubicacion.lng)
-                result[pet.mascotaId] = Pair(finalPos, pet.fotoUrl)
+                result[pet.mascotaId] = Triple(finalPos, pet.fotoUrl, pet.tipo)
             }
         }
         result
+    }
+
+    // Nombre del tipo seleccionado para comparar con los DTOs que usan String
+    val selectedTipoNombre = remember(speciesFilter, tiposMascota) {
+        tiposMascota.find { it.tipoId == speciesFilter }?.nombre
+    }
+
+    val filteredPetsToDraw = remember(petsToDraw, speciesFilter, selectedTipoNombre) {
+        if (speciesFilter == null) petsToDraw
+        else petsToDraw.filter { (_, t) -> t.third.equals(selectedTipoNombre, ignoreCase = true) }
+    }
+
+    val filteredLostPets = remember(lostPets, speciesFilter, selectedTipoNombre) {
+        if (speciesFilter == null) lostPets
+        else lostPets.filter { it.tipo.equals(selectedTipoNombre, ignoreCase = true) }
     }
 
     var hasLocationPermission by remember { mutableStateOf(false) }
@@ -221,10 +235,10 @@ fun MapHomeScreen(
                         }
                     }
 
-                    // 2. MARCADORES DE MASCOTAS
-                    petsToDraw.forEach { (mascotaId, petData) ->
+                    // 2. MARCADORES DE MASCOTAS (filtrados por especie)
+                    filteredPetsToDraw.forEach { (mascotaId, petData) ->
                         key(mascotaId) {
-                            val (pos, fotoUrl) = petData
+                            val (pos, fotoUrl, _) = petData
                             val isLost = mascotaId in desaparecidasIds
                             val borderColor = if (isLost) Color(0xFFE53935) else PrimaryOrange
                             val customIcon = rememberCustomMarkerIcon(context, fotoUrl, borderColor)
@@ -277,9 +291,9 @@ fun MapHomeScreen(
                     }
                 }
 
-                // 4. MASCOTAS PERDIDAS PÚBLICAS — excluye las que ya están en petsToDraw
+                // 4. MASCOTAS PERDIDAS PÚBLICAS — excluye las que ya están en filteredPetsToDraw
                 if (showLostPets) {
-                    lostPets.filter { it.mascotaId !in petsToDraw }.forEach { lost ->
+                    filteredLostPets.filter { it.mascotaId !in filteredPetsToDraw }.forEach { lost ->
                         key("lost_${lost.mascotaId}") {
                             val pos = LatLng(lost.ubicacion.lat, lost.ubicacion.lng)
                             val customIcon = rememberCustomMarkerIcon(context, lost.fotoUrl, Color(0xFFE53935))

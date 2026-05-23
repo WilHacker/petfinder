@@ -1,6 +1,7 @@
 package com.frontend.petfinder.profile.data
 
 import com.frontend.petfinder.profile.data.dto.*
+import com.frontend.petfinder.profile.data.dto.UserCardDto
 import okhttp3.MultipartBody
 import retrofit2.Response
 import retrofit2.http.*
@@ -39,4 +40,7 @@ interface UserApi {
 
     @DELETE("users/me/contacts/{id}")
     suspend fun deleteContact(@Path("id") id: Int): Response<Map<String, String>>
+
+    @GET("users/{personaId}/card")
+    suspend fun getUserCard(@Path("personaId") personaId: String): Response<UserCardDto>
 }

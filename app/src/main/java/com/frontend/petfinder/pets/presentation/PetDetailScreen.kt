@@ -60,6 +60,8 @@ private sealed class PetDetailModal {
     object LostConfirm : PetDetailModal()
     object LocationSheet : PetDetailModal()
     object AddOwnerSheet : PetDetailModal()
+    object CommunityAlertSheet : PetDetailModal()
+    object RewardSheet : PetDetailModal()
 }
 
 private fun estadoLabel(estado: String) = when (estado) {
@@ -117,6 +119,10 @@ fun PetDetailScreen(
     val sightings by viewModel.sightings.collectAsStateWithLifecycle()
     val sightingError by viewModel.sightingError.collectAsStateWithLifecycle()
     val sightingSubmitting by viewModel.sightingSubmitting.collectAsStateWithLifecycle()
+    val communityAlertSending by viewModel.communityAlertSending.collectAsStateWithLifecycle()
+    val communityAlertResult by viewModel.communityAlertResult.collectAsStateWithLifecycle()
+    val rewardUpdating by viewModel.rewardUpdating.collectAsStateWithLifecycle()
+    val rewardResult by viewModel.rewardResult.collectAsStateWithLifecycle()
 
     var activeModal by remember { mutableStateOf<PetDetailModal>(PetDetailModal.None) }
     var locationSuccess by remember { mutableStateOf(false) }
@@ -145,6 +151,20 @@ fun PetDetailScreen(
         qrDownloadResult?.let {
             Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
             viewModel.clearQrDownloadResult()
+        }
+    }
+
+    LaunchedEffect(communityAlertResult) {
+        communityAlertResult?.let {
+            Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+            viewModel.clearCommunityAlertResult()
+        }
+    }
+
+    LaunchedEffect(rewardResult) {
+        rewardResult?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.clearRewardResult()
         }
     }
 
@@ -356,12 +376,12 @@ fun PetDetailScreen(
     // ── Bottom sheet: agregar co-propietario ──────────────────────────────
     if (activeModal is PetDetailModal.AddOwnerSheet) {
         val tiposRelacion = listOf("Cuidador", "Tutor", "Familiar")
-        var personaIdInput by remember { mutableStateOf("") }
+        var emailInput by remember { mutableStateOf("") }
         var selectedTipo by remember { mutableStateOf(tiposRelacion[0]) }
         var tipoExpanded by remember { mutableStateOf(false) }
 
         ModalBottomSheet(
-            onDismissRequest = { activeModal = PetDetailModal.None; personaIdInput = "" },
+            onDismissRequest = { activeModal = PetDetailModal.None; emailInput = "" },
             shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
             containerColor = MaterialTheme.colorScheme.background
         ) {
@@ -374,16 +394,20 @@ fun PetDetailScreen(
                 Text("Agregar cuidador", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Ingresa el ID de persona del usuario que quieres agregar como cuidador.",
+                    "Ingresa el correo electrónico del usuario que quieres agregar como cuidador.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(20.dp))
 
                 OutlinedTextField(
-                    value = personaIdInput,
-                    onValueChange = { personaIdInput = it },
-                    label = { Text("ID de persona (UUID)") },
+                    value = emailInput,
+                    onValueChange = { emailInput = it },
+                    label = { Text("Correo electrónico") },
+                    placeholder = { Text("usuario@ejemplo.com") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Email
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     singleLine = true
@@ -410,11 +434,11 @@ fun PetDetailScreen(
                 Spacer(Modifier.height(24.dp))
                 Button(
                     onClick = {
-                        viewModel.addOwner(mascotaId, personaIdInput, selectedTipo)
+                        viewModel.addOwner(mascotaId, emailInput.trim(), selectedTipo)
                         activeModal = PetDetailModal.None
-                        personaIdInput = ""
+                        emailInput = ""
                     },
-                    enabled = personaIdInput.isNotBlank() && !ownerLoading,
+                    enabled = emailInput.isNotBlank() && !ownerLoading,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                     shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
@@ -423,6 +447,216 @@ fun PetDetailScreen(
                         CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                     } else {
                         Text("Agregar cuidador", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Sheet: recompensa del reporte activo ──────────────────────────────
+    if (activeModal is PetDetailModal.RewardSheet) {
+        val recompensaActual: Double? = remember(reports) {
+            reports
+                .filter { it.estadoReporte.lowercase().let { s -> s == "activo" || s == "perdido" } }
+                .firstOrNull()
+                ?.recompensa
+        }
+        var rewardInput by remember { mutableStateOf(recompensaActual?.let { if (it > 0) "%.0f".format(it) else "" } ?: "") }
+        var sinRecompensa by remember { mutableStateOf(recompensaActual == 0.0) }
+
+        ModalBottomSheet(
+            onDismissRequest = { activeModal = PetDetailModal.None },
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = MaterialTheme.colorScheme.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFFFF8E1)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.EmojiEvents, null, tint = Color(0xFFF57F17), modifier = Modifier.size(28.dp))
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Recompensa por encontrar a mi mascota",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "La recompensa se muestra en el mapa y en la ficha QR para motivar a la comunidad.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Checkbox(
+                        checked = sinRecompensa,
+                        onCheckedChange = {
+                            sinRecompensa = it
+                            if (it) rewardInput = "0"
+                        },
+                        colors = CheckboxDefaults.colors(checkedColor = PrimaryOrange)
+                    )
+                    Text(
+                        "No ofrezco recompensa económica (Bs. 0)",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = rewardInput,
+                    onValueChange = {
+                        rewardInput = it
+                        sinRecompensa = it.trim() == "0"
+                    },
+                    label = { Text("Monto en bolivianos (Bs.)") },
+                    placeholder = { Text("Ej. 200") },
+                    prefix = { Text("Bs. ") },
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                    ),
+                    enabled = !sinRecompensa,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true
+                )
+
+                Spacer(Modifier.height(24.dp))
+
+                val monto = if (sinRecompensa) 0.0 else rewardInput.toDoubleOrNull()
+                val canSave = sinRecompensa || monto != null && monto >= 0
+
+                Button(
+                    onClick = {
+                        val amount = if (sinRecompensa) 0.0 else rewardInput.toDoubleOrNull() ?: 0.0
+                        viewModel.updateReward(mascotaId, amount)
+                        activeModal = PetDetailModal.None
+                    },
+                    enabled = canSave && !rewardUpdating,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57F17))
+                ) {
+                    if (rewardUpdating) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.EmojiEvents, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (sinRecompensa) "Guardar (sin recompensa)" else "Guardar recompensa",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Sheet: pedir ayuda comunitaria ────────────────────────────────────
+    if (activeModal is PetDetailModal.CommunityAlertSheet) {
+        var radioSlider by remember { mutableStateOf(5f) }
+        ModalBottomSheet(
+            onDismissRequest = { activeModal = PetDetailModal.None },
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = MaterialTheme.colorScheme.background
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 40.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFFFEBEE)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Default.Campaign, null, tint = Color(0xFFE53935), modifier = Modifier.size(28.dp))
+                }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Pedir ayuda a la comunidad",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Envía una alerta a usuarios de PetFinder cercanos para que ayuden a buscar a tu mascota.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Radio de búsqueda",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Surface(shape = RoundedCornerShape(8.dp), color = PrimaryOrangeLight) {
+                        Text(
+                            "${radioSlider.toInt()} km",
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = PrimaryOrange
+                        )
+                    }
+                }
+                Slider(
+                    value = radioSlider,
+                    onValueChange = { radioSlider = it },
+                    valueRange = 1f..20f,
+                    steps = 18,
+                    colors = SliderDefaults.colors(thumbColor = PrimaryOrange, activeTrackColor = PrimaryOrange)
+                )
+
+                Spacer(Modifier.height(16.dp))
+                Button(
+                    onClick = {
+                        val petId = (state as? PetDetailViewModel.DetailState.Success)?.pet?.mascotaId ?: mascotaId
+                        viewModel.sendCommunityAlert(petId, radioSlider.toInt())
+                        activeModal = PetDetailModal.None
+                    },
+                    enabled = !communityAlertSending,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935))
+                ) {
+                    if (communityAlertSending) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Default.Campaign, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Enviar alerta", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -474,8 +708,19 @@ fun PetDetailScreen(
                 onShowLocationSheet = { activeModal = PetDetailModal.LocationSheet },
                 onAddOwner = { activeModal = PetDetailModal.AddOwnerSheet },
                 onRemoveOwner = { personaId -> viewModel.removeOwner(mascotaId, personaId) },
-                onReportSighting = { desc -> viewModel.reportSighting(mascotaId, desc) },
-                onSendThanks = { id, msg -> viewModel.sendThanks(id, msg) }
+                onReportSighting = { desc ->
+                    scope.launch {
+                        val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                        val cts = CancellationTokenSource()
+                        val loc = try {
+                            fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
+                        } catch (_: Exception) { null }
+                        viewModel.reportSighting(mascotaId, loc?.latitude ?: 0.0, loc?.longitude ?: 0.0, desc)
+                    }
+                },
+                onSendThanks = { id, msg -> viewModel.sendThanks(id, msg) },
+                onCommunityAlert = { activeModal = PetDetailModal.CommunityAlertSheet },
+                onUpdateReward = { activeModal = PetDetailModal.RewardSheet }
             )
         }
     }
@@ -497,7 +742,9 @@ private fun PetDetailContent(
     onAddOwner: () -> Unit = {},
     onRemoveOwner: (String) -> Unit = {},
     onReportSighting: (String) -> Unit = {},
-    onSendThanks: (Int, String?) -> Unit = { _, _ -> }
+    onSendThanks: (String, String?) -> Unit = { _, _ -> },
+    onCommunityAlert: () -> Unit = {},
+    onUpdateReward: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
     val imageUrl = pet.fotos?.find { it.esPrincipal }?.fotoUrl
@@ -654,6 +901,11 @@ private fun PetDetailContent(
 
             // Alerta si extraviada
             if (estado == "extraviada") {
+                val activeReport = reports
+                    .filter { it.estadoReporte.lowercase().let { s -> s == "activo" || s == "perdido" } }
+                    .firstOrNull()
+                val recompensaActiva: Double? = activeReport?.recompensa
+
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(14.dp),
@@ -665,7 +917,7 @@ private fun PetDetailContent(
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Icon(Icons.Default.Warning, null, tint = Color(0xFFE53935), modifier = Modifier.size(20.dp))
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 "Mascota extraviada",
                                 fontWeight = FontWeight.Bold,
@@ -678,8 +930,73 @@ private fun PetDetailContent(
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
+                        if (recompensaActiva != null && recompensaActiva > 0) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color(0xFFFFF8E1)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        "🏆",
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                    Text(
+                                        "Bs. %.0f".format(recompensaActiva),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFFF57F17)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
+
+                // Reward info row — always shown when there's an active report
+                if (activeReport != null) {
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (recompensaActiva != null && recompensaActiva > 0) Color(0xFFFFF8E1) else Color(0xFFF5F5F5)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.EmojiEvents,
+                                contentDescription = null,
+                                tint = if (recompensaActiva != null && recompensaActiva > 0) Color(0xFFF57F17) else Color(0xFF9E9E9E),
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    "Recompensa ofrecida",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF757575)
+                                )
+                                Text(
+                                    if (recompensaActiva != null && recompensaActiva > 0)
+                                        "Bs. %.0f".format(recompensaActiva)
+                                    else
+                                        "Sin recompensa económica",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (recompensaActiva != null && recompensaActiva > 0) Color(0xFFF57F17) else Color(0xFF757575)
+                                )
+                            }
+                            TextButton(onClick = onUpdateReward) {
+                                Text("Editar", color = PrimaryOrange, style = MaterialTheme.typography.labelMedium)
+                            }
+                        }
+                    }
+                }
+
                 Spacer(Modifier.height(20.dp))
             }
 
@@ -745,6 +1062,22 @@ private fun PetDetailContent(
                 subtitle = "Registra la última posición conocida",
                 onClick = onShowLocationSheet
             )
+            if (estado == "extraviada") {
+                Spacer(Modifier.height(10.dp))
+                ActionCard(
+                    icon = Icons.Default.Campaign,
+                    title = "Pedir ayuda a la comunidad",
+                    subtitle = "Alerta a usuarios cercanos para que ayuden a buscar",
+                    onClick = onCommunityAlert
+                )
+                Spacer(Modifier.height(10.dp))
+                ActionCard(
+                    icon = Icons.Default.EmojiEvents,
+                    title = "Establecer recompensa",
+                    subtitle = "Motiva a la comunidad con una recompensa económica",
+                    onClick = onUpdateReward
+                )
+            }
             Spacer(Modifier.height(20.dp))
 
             // ── Sección: Escaneos QR ──────────────────────────────────────
@@ -1107,12 +1440,12 @@ private fun SightingRow(
     sighting: com.frontend.petfinder.sightings.data.SightingDto,
     onThanks: () -> Unit
 ) {
-    val fechaLegible = remember(sighting.creadoEl) {
+    val fechaLegible = remember(sighting.fechaAvistamiento) {
         try {
             val input = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
             val output = SimpleDateFormat("d MMM yyyy, HH:mm", Locale("es"))
-            output.format(input.parse(sighting.creadoEl)!!)
-        } catch (_: Exception) { sighting.creadoEl.take(10) }
+            output.format(input.parse(sighting.fechaAvistamiento)!!)
+        } catch (_: Exception) { sighting.fechaAvistamiento.take(10) }
     }
 
     Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 2.dp) {
@@ -1129,7 +1462,7 @@ private fun SightingRow(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        sighting.reportadoPor?.nombre ?: "Anónimo",
+                        "Anónimo",
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -1137,7 +1470,7 @@ private fun SightingRow(
                 }
             }
 
-            sighting.descripcion?.takeIf { it.isNotBlank() }?.let {
+            sighting.mensajeRescatista?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(6.dp))
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground)
             }
@@ -1167,7 +1500,7 @@ private fun SightingRow(
                     Icon(Icons.Default.FavoriteBorder, null, modifier = Modifier.size(14.dp), tint = PrimaryOrange)
                     Spacer(Modifier.width(4.dp))
                     Text(
-                        "Gracias${if (sighting.agradecimientos > 0) " (${sighting.agradecimientos})" else ""}",
+                        "Gracias",
                         style = MaterialTheme.typography.labelSmall,
                         color = PrimaryOrange
                     )

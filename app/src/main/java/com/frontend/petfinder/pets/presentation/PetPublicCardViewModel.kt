@@ -5,12 +5,14 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.frontend.petfinder.core.network.ApiServices
 import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PublicPetCardDto
 import com.frontend.petfinder.pets.data.dto.QrScanRequest
-import com.frontend.petfinder.sightings.data.CreateSightingRequest
+import com.frontend.petfinder.profile.data.dto.UserCardDto
 import com.frontend.petfinder.sightings.data.SightingDto
 import com.frontend.petfinder.sightings.data.SightingsRepository
+import okhttp3.MultipartBody
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -67,10 +69,10 @@ class PetPublicCardViewModel : ViewModel() {
         }
     }
 
-    fun reportSighting(petId: String, descripcion: String, lat: Double? = null, lng: Double? = null) {
+    fun reportSighting(petId: String, lat: Double, lng: Double, mensajeRescatista: String? = null, foto: MultipartBody.Part? = null) {
         viewModelScope.launch {
             _sightingSubmitting.value = true
-            SightingsRepository.reportSighting(petId, CreateSightingRequest(descripcion = descripcion.ifBlank { null }, lat = lat, lng = lng)).fold(
+            SightingsRepository.reportSighting(petId, lat, lng, mensajeRescatista, foto).fold(
                 onSuccess = {
                     _sightings.value = listOf(it) + _sightings.value
                     _sightingSuccess.value = true
@@ -82,6 +84,25 @@ class PetPublicCardViewModel : ViewModel() {
     }
 
     fun clearSightingSuccess() { _sightingSuccess.value = false }
+
+    private val _ownerCard = MutableStateFlow<UserCardDto?>(null)
+    val ownerCard: StateFlow<UserCardDto?> = _ownerCard.asStateFlow()
+
+    private val _ownerCardLoading = MutableStateFlow(false)
+    val ownerCardLoading: StateFlow<Boolean> = _ownerCardLoading.asStateFlow()
+
+    fun loadOwnerCard(personaId: String) {
+        viewModelScope.launch {
+            _ownerCardLoading.value = true
+            runCatching {
+                val r = ApiServices.user.getUserCard(personaId)
+                if (r.isSuccessful) r.body() else null
+            }.getOrNull()?.let { _ownerCard.value = it }
+            _ownerCardLoading.value = false
+        }
+    }
+
+    fun clearOwnerCard() { _ownerCard.value = null }
 
     @SuppressLint("MissingPermission")
     fun registerScan(token: String, context: Context) {

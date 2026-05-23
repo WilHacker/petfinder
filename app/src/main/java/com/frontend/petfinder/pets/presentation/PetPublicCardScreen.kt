@@ -1,22 +1,32 @@
 package com.frontend.petfinder.pets.presentation
 
+import android.annotation.SuppressLint
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,10 +48,20 @@ import com.frontend.petfinder.pets.data.dto.PropietarioPublicoDto
 import com.frontend.petfinder.pets.data.dto.PublicPetCardDto
 import com.frontend.petfinder.pets.data.dto.RegistroMedicoPublicoDto
 import com.frontend.petfinder.sightings.data.SightingDto
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody.Companion.asRequestBody
 
 @OptIn(ExperimentalMaterial3Api::class)
+@SuppressLint("MissingPermission")
 @Composable
 fun PetPublicCardScreen(
     token: String,
@@ -49,10 +69,13 @@ fun PetPublicCardScreen(
     viewModel: PetPublicCardViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val cardState by viewModel.cardState.collectAsStateWithLifecycle()
     val sightings by viewModel.sightings.collectAsStateWithLifecycle()
     val sightingSubmitting by viewModel.sightingSubmitting.collectAsStateWithLifecycle()
     val sightingSuccess by viewModel.sightingSuccess.collectAsStateWithLifecycle()
+    val ownerCard by viewModel.ownerCard.collectAsStateWithLifecycle()
+    val ownerCardLoading by viewModel.ownerCardLoading.collectAsStateWithLifecycle()
 
     LaunchedEffect(sightingSuccess) {
         if (sightingSuccess) {
@@ -64,6 +87,25 @@ fun PetPublicCardScreen(
     LaunchedEffect(token) {
         viewModel.loadCard(token)
         viewModel.registerScan(token, context)
+    }
+
+    // ── Perfil del propietario (bottom sheet) ─────────────────────────────
+    if (ownerCard != null || ownerCardLoading) {
+        ModalBottomSheet(
+            onDismissRequest = { viewModel.clearOwnerCard() },
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            containerColor = MaterialTheme.colorScheme.background
+        ) {
+            if (ownerCardLoading) {
+                Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = PrimaryOrange)
+                }
+            } else {
+                ownerCard?.let { card ->
+                    OwnerProfileSheet(card = card)
+                }
+            }
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -135,13 +177,24 @@ fun PetPublicCardScreen(
                         }
                         context.startActivity(intent)
                     },
-                    onReportSighting = { desc -> viewModel.reportSighting(state.card.mascotaId, desc) }
+                    onReportSighting = { desc, foto ->
+                        scope.launch {
+                            val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                            val cts = CancellationTokenSource()
+                            val loc = try {
+                                fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
+                            } catch (_: Exception) { null }
+                            viewModel.reportSighting(state.card.mascotaId, loc?.latitude ?: 0.0, loc?.longitude ?: 0.0, desc, foto)
+                        }
+                    },
+                    onOwnerClick = { personaId -> viewModel.loadOwnerCard(personaId) }
                 )
             }
         }
     }
 }
 
+@SuppressLint("MissingPermission")
 @Composable
 private fun PublicCardContent(
     card: PublicPetCardDto,
@@ -149,7 +202,8 @@ private fun PublicCardContent(
     sightingSubmitting: Boolean,
     onNavigateBack: () -> Unit,
     onContactClick: (ContactoPublicoDto) -> Unit,
-    onReportSighting: (String) -> Unit
+    onReportSighting: (String, MultipartBody.Part?) -> Unit,
+    onOwnerClick: (String) -> Unit = {}
 ) {
     val primaryPhoto = card.fotos?.firstOrNull { it.esPrincipal } ?: card.fotos?.firstOrNull()
     val isLost = card.estaExtraviada
@@ -387,14 +441,18 @@ private fun PublicCardContent(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 card.propietarios.forEach { propietario ->
-                    OwnerContactCard(propietario = propietario, onContactClick = onContactClick)
+                    OwnerContactCard(
+                        propietario = propietario,
+                        onContactClick = onContactClick,
+                        onProfileClick = { onOwnerClick(propietario.personaId) }
+                    )
                     Spacer(modifier = Modifier.height(12.dp))
                 }
             }
 
             // Recompensa
             if (isLost) {
-                card.recompensa?.let { recompensa ->
+                card.reporteActivo?.recompensa?.let { recompensa ->
                     if (recompensa > 0) {
                         Spacer(modifier = Modifier.height(20.dp))
                         Surface(
@@ -429,6 +487,9 @@ private fun PublicCardContent(
 
             // Avistamientos
             if (isLost || sightings.isNotEmpty()) {
+                val context = LocalContext.current
+                val scope = rememberCoroutineScope()
+
                 Spacer(modifier = Modifier.height(28.dp))
                 Text(
                     text = "Avistamientos",
@@ -439,31 +500,118 @@ private fun PublicCardContent(
                 Spacer(modifier = Modifier.height(12.dp))
 
                 var sightingText by remember { mutableStateOf("") }
+                var selectedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+                var gpsStatus by remember { mutableStateOf<String?>(null) }
+
+                val photoPicker = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.GetContent()
+                ) { uri -> selectedPhotoUri = uri }
+
+                // GPS status banner
+                if (gpsStatus != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (gpsStatus!!.startsWith("✓")) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                if (gpsStatus!!.startsWith("✓")) Icons.Default.CheckCircle else Icons.Default.MyLocation,
+                                null,
+                                tint = if (gpsStatus!!.startsWith("✓")) Color(0xFF2E7D32) else Color(0xFFE65100),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                gpsStatus!!,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (gpsStatus!!.startsWith("✓")) Color(0xFF2E7D32) else Color(0xFFE65100)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 OutlinedTextField(
                     value = sightingText,
                     onValueChange = { sightingText = it },
                     placeholder = { Text("¿Lo viste? Describe dónde y cuándo...") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    maxLines = 3,
-                    trailingIcon = {
-                        IconButton(
-                            onClick = {
-                                if (sightingText.isNotBlank() && !sightingSubmitting) {
-                                    onReportSighting(sightingText)
-                                    sightingText = ""
-                                }
-                            },
-                            enabled = sightingText.isNotBlank() && !sightingSubmitting
-                        ) {
-                            if (sightingSubmitting) {
-                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Default.Send, contentDescription = "Reportar", tint = PrimaryOrange)
-                            }
+                    maxLines = 3
+                )
+
+                // Selected photo preview + actions row
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Photo picker button
+                    OutlinedButton(
+                        onClick = { photoPicker.launch("image/*") },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Icon(Icons.Default.AddPhotoAlternate, null, modifier = Modifier.size(16.dp), tint = PrimaryOrange)
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            if (selectedPhotoUri != null) "Foto adjunta" else "Adjuntar foto",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PrimaryOrange
+                        )
+                        if (selectedPhotoUri != null) {
+                            Spacer(Modifier.width(4.dp))
+                            Icon(
+                                Icons.Default.Close, null,
+                                modifier = Modifier.size(14.dp).clickable { selectedPhotoUri = null },
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
-                )
+
+                    Spacer(Modifier.weight(1f))
+
+                    // Submit button
+                    Button(
+                        onClick = {
+                            if (!sightingSubmitting) {
+                                scope.launch {
+                                    gpsStatus = "Obteniendo GPS..."
+                                    val fusedClient = LocationServices.getFusedLocationProviderClient(context)
+                                    val cts = CancellationTokenSource()
+                                    val loc = try {
+                                        fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
+                                    } catch (_: Exception) { null }
+                                    gpsStatus = if (loc != null) "✓ GPS obtenido (${String.format("%.4f", loc.latitude)}, ${String.format("%.4f", loc.longitude)})" else "Sin GPS — se enviará sin coordenadas"
+
+                                    val fotoPart = selectedPhotoUri?.let { uri ->
+                                        uriToMultipart(context, uri)
+                                    }
+                                    onReportSighting(sightingText, fotoPart)
+                                    sightingText = ""
+                                    selectedPhotoUri = null
+                                }
+                            }
+                        },
+                        enabled = sightingText.isNotBlank() && !sightingSubmitting,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        if (sightingSubmitting) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color.White)
+                        } else {
+                            Icon(Icons.Default.Send, null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Reportar", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
 
                 if (sightings.isEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
@@ -512,7 +660,8 @@ private fun PublicCardContent(
 @Composable
 private fun OwnerContactCard(
     propietario: PropietarioPublicoDto,
-    onContactClick: (ContactoPublicoDto) -> Unit
+    onContactClick: (ContactoPublicoDto) -> Unit,
+    onProfileClick: () -> Unit = {}
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -523,7 +672,8 @@ private fun OwnerContactCard(
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.clickable(onClick = onProfileClick)
             ) {
                 if (propietario.fotoPerfilUrl != null) {
                     AsyncImage(
@@ -677,8 +827,8 @@ private fun PublicSightingRow(sighting: SightingDto) {
     val fechaLegible = try {
         val input = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
         val output = SimpleDateFormat("d MMM · HH:mm", Locale("es"))
-        output.format(input.parse(sighting.creadoEl)!!)
-    } catch (_: Exception) { sighting.creadoEl.take(10) }
+        output.format(input.parse(sighting.fechaAvistamiento)!!)
+    } catch (_: Exception) { sighting.fechaAvistamiento.take(10) }
 
     Surface(
         shape = RoundedCornerShape(14.dp),
@@ -698,7 +848,7 @@ private fun PublicSightingRow(sighting: SightingDto) {
                 )
                 Spacer(modifier = Modifier.height(10.dp))
             }
-            sighting.descripcion?.takeIf { it.isNotBlank() }?.let { desc ->
+            sighting.mensajeRescatista?.takeIf { it.isNotBlank() }?.let { desc ->
                 Text(
                     text = desc,
                     style = MaterialTheme.typography.bodySmall,
@@ -712,7 +862,7 @@ private fun PublicSightingRow(sighting: SightingDto) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = sighting.reportadoPor?.nombre ?: "Anónimo",
+                    text = "Anónimo",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onBackground
@@ -725,6 +875,111 @@ private fun PublicSightingRow(sighting: SightingDto) {
             }
         }
     }
+}
+
+@Composable
+private fun OwnerProfileSheet(card: com.frontend.petfinder.profile.data.dto.UserCardDto) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(bottom = 40.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier.padding(bottom = 20.dp)
+        ) {
+            if (card.fotoPerfilUrl != null) {
+                AsyncImage(
+                    model = card.fotoPerfilUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(64.dp).clip(CircleShape)
+                )
+            } else {
+                Box(
+                    modifier = Modifier.size(64.dp).clip(CircleShape).background(PrimaryOrangeLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        card.nombreCompleto.first().uppercase(),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryOrange
+                    )
+                }
+            }
+            Column {
+                Text(card.nombreCompleto, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold)
+                if (card.contactos.isNotEmpty()) {
+                    Text(
+                        card.contactos.first().valor,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (card.mascotas.isNotEmpty()) {
+            Text(
+                "Mascotas registradas",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = PrimaryOrange,
+                modifier = Modifier.padding(bottom = 10.dp)
+            )
+            card.mascotas.forEach { pet ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = Color.White,
+                    shadowElevation = 1.dp,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        if (pet.fotoUrl != null) {
+                            AsyncImage(
+                                model = pet.fotoUrl,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier.size(40.dp).clip(RoundedCornerShape(8.dp)).background(PrimaryOrangeLight),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Pets, null, tint = PrimaryOrange, modifier = Modifier.size(20.dp))
+                            }
+                        }
+                        Text(pet.nombre, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        if (pet.estado == "extraviada") {
+                            Surface(shape = RoundedCornerShape(50), color = Color(0xFFFFEBEE)) {
+                                Text("Extraviada", modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp), style = MaterialTheme.typography.labelSmall, color = Color(0xFFE53935), fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun uriToMultipart(context: Context, uri: Uri): MultipartBody.Part? {
+    return try {
+        val inputStream = context.contentResolver.openInputStream(uri) ?: return null
+        val mimeType = context.contentResolver.getType(uri) ?: "image/jpeg"
+        val extension = if (mimeType.contains("png")) "png" else "jpg"
+        val tempFile = File.createTempFile("sighting_foto_", ".$extension", context.cacheDir)
+        tempFile.outputStream().use { out -> inputStream.copyTo(out) }
+        val requestBody = tempFile.asRequestBody(mimeType.toMediaType())
+        MultipartBody.Part.createFormData("foto", tempFile.name, requestBody)
+    } catch (_: Exception) { null }
 }
 
 private fun sexoLabel(sexo: String) = when (sexo.lowercase()) {
