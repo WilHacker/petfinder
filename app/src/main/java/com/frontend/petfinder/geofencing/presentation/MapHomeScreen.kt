@@ -290,25 +290,25 @@ fun MapHomeScreen(
         mapViewModel.clearFocus()
     }
 
-    Scaffold { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+    Box(modifier = Modifier.fillMaxSize()) {
 
-            GoogleMap(
-                modifier = Modifier.fillMaxSize(),
-                cameraPositionState = cameraPositionState,
-                properties = MapProperties(
-                    isMyLocationEnabled = hasLocationPermission,
-                    mapStyleOptions = MapStyleOptions(MapStyle.json)
-                ),
-                uiSettings = MapUiSettings(
-                    myLocationButtonEnabled = false,
-                    zoomControlsEnabled = false
-                ),
-                onMapClick = { latLng ->
-                    highlightedMascotaId = null
-                    mapViewModel.handleMapClick(latLng)
-                }
-            ) {
+        GoogleMap(
+            modifier = Modifier.fillMaxSize(),
+            cameraPositionState = cameraPositionState,
+            properties = MapProperties(
+                isMyLocationEnabled = hasLocationPermission,
+                mapStyleOptions = MapStyleOptions(MapStyle.json)
+            ),
+            uiSettings = MapUiSettings(
+                myLocationButtonEnabled = false,
+                zoomControlsEnabled = false
+            ),
+            contentPadding = PaddingValues(bottom = 100.dp),
+            onMapClick = { latLng ->
+                highlightedMascotaId = null
+                mapViewModel.handleMapClick(latLng)
+            }
+        ) {
                 snapshot?.let { data ->
 
                     // 1. MARCADORES DE CO-PROPIETARIOS (Humanos)
@@ -762,7 +762,7 @@ fun MapHomeScreen(
                 }
 
                 Column(
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 140.dp, start = 24.dp, end = 24.dp)
+                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 200.dp, start = 24.dp, end = 24.dp)
                 ) {
                     if (drawingType == "circulo" && tempCircleCenter != null) {
                         Card(colors = CardDefaults.cardColors(containerColor = Color.White), elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)) {
@@ -778,7 +778,7 @@ fun MapHomeScreen(
                 }
 
                 Row(
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 32.dp).fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(bottom = 100.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically
                 ) {
                     FloatingActionButton(onClick = { mapViewModel.cancelDrawing() }, containerColor = MaterialTheme.colorScheme.error, contentColor = Color.White) {
@@ -795,7 +795,6 @@ fun MapHomeScreen(
                     }
                 }
             }
-        }
 
         // --- DIÁLOGOS ---
         if (showAssignPetsDialog) {

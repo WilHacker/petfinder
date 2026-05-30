@@ -58,8 +58,8 @@ fun PetFinderTheme(
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            // Pintamos la barra de estado superior (batería/hora) del mismo color crema
-            window.statusBarColor = colorScheme.background.toArgb()
+            // Hacemos la barra de estado transparente para permitir edge-to-edge
+            window.statusBarColor = android.graphics.Color.TRANSPARENT
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = true
         }
     }

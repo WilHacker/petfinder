@@ -84,7 +84,7 @@ fun MainScreen(rootNavController: NavHostController) {
             NavHost(
                 navController = bottomNavController,
                 startDestination = NavRoutes.MapHome.route,
-                modifier = Modifier.padding(paddingValues)
+                modifier = Modifier.fillMaxSize()
             ) {
                 composable(NavRoutes.MapHome.route) {
                     MapHomeScreen(
