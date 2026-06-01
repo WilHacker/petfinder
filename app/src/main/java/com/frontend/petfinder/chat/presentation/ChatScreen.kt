@@ -6,9 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,29 +24,25 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.frontend.petfinder.chat.data.ChatEstado
+import com.frontend.petfinder.chat.data.ChatSummaryDto
 import com.frontend.petfinder.core.theme.BackgroundCream
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.PrimaryOrangeLight
 import com.frontend.petfinder.core.theme.SurfaceVariantLight
 import com.frontend.petfinder.core.theme.TextDark
 import com.frontend.petfinder.core.theme.TextGray
-import com.frontend.petfinder.sightings.data.MyParticipationDto
-import com.frontend.petfinder.sightings.data.SightingThreadDto
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(
-    onOpenThread: (avistamientoId: String, rescatistaUsuarioId: String, petName: String, rescatistaName: String) -> Unit,
-    viewModel: ChatViewModel = viewModel()
+    onOpenChat: (conversacionId: String) -> Unit,
+    viewModel: ChatListViewModel = viewModel()
 ) {
-    val myPetsThreads by viewModel.myPetsThreads.collectAsStateWithLifecycle()
-    val myParticipations by viewModel.myParticipations.collectAsStateWithLifecycle()
-    val unreadOwner by viewModel.unreadOwner.collectAsStateWithLifecycle()
-    val unreadRescuer by viewModel.unreadRescuer.collectAsStateWithLifecycle()
-    val isLoadingThreads by viewModel.isLoadingThreads.collectAsStateWithLifecycle()
-    val isLoadingParticipations by viewModel.isLoadingParticipations.collectAsStateWithLifecycle()
+    val chats by viewModel.chats.collectAsStateWithLifecycle()
+    val loading by viewModel.loading.collectAsStateWithLifecycle()
 
-    var selectedTab by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) { viewModel.load() }
 
     Scaffold(
         containerColor = BackgroundCream,
@@ -54,7 +50,7 @@ fun ChatScreen(
             TopAppBar(
                 title = {
                     Text(
-                        "Chat",
+                        "Chats",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
                             color = TextDark
@@ -65,110 +61,28 @@ fun ChatScreen(
             )
         }
     ) { paddingValues ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Tab row
-            TabRow(
-                selectedTabIndex = selectedTab,
-                containerColor = Color.White,
-                contentColor = PrimaryOrange
-            ) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text("Mis mascotas", fontSize = 13.sp)
-                            if (unreadOwner > 0) UnreadBadge(unreadOwner)
-                        }
-                    }
+            when {
+                loading && chats.isEmpty() -> CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center),
+                    color = PrimaryOrange
                 )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text("Ayudé", fontSize = 13.sp)
-                            if (unreadRescuer > 0) UnreadBadge(unreadRescuer)
-                        }
-                    }
+                chats.isEmpty() -> EmptyState(
+                    message = "Sin conversaciones",
+                    subtitle = "Cuando inicies un chat con un rescatista —o alguien acepte el tuyo— aparecerá aquí."
                 )
-            }
-
-            when (selectedTab) {
-                0 -> OwnerThreadsTab(
-                    threads = myPetsThreads,
-                    loading = isLoadingThreads,
-                    onRefresh = { viewModel.loadMyPetsThreads() },
-                    onOpenThread = { thread ->
-                        val avi = thread.avistamiento ?: return@OwnerThreadsTab
-                        onOpenThread(
-                            avi.avistamientoId,
-                            "",
-                            thread.mascota.nombre,
-                            "Rescatista"
-                        )
-                        viewModel.onThreadOpened()
+                else -> LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(chats, key = { it.conversacionId }) { chat ->
+                        ChatRow(chat = chat, onClick = { onOpenChat(chat.conversacionId) })
+                        HorizontalDivider(color = SurfaceVariantLight, thickness = 0.5.dp)
                     }
-                )
-                else -> RescuerParticipationsTab(
-                    participations = myParticipations,
-                    loading = isLoadingParticipations,
-                    onRefresh = { viewModel.loadMyParticipations() },
-                    onOpenThread = { participation ->
-                        val ownerName = participation.dueno?.nombre ?: "Dueño"
-                        onOpenThread(
-                            participation.avistamientoId,
-                            "",
-                            participation.mascota.nombre,
-                            ownerName
-                        )
-                        viewModel.onThreadOpened()
-                    }
-                )
-            }
-        }
-    }
-}
-
-// ── Pestaña dueño — "Mis mascotas" ───────────────────────────────────────────
-
-@Composable
-private fun OwnerThreadsTab(
-    threads: List<SightingThreadDto>,
-    loading: Boolean,
-    onRefresh: () -> Unit,
-    onOpenThread: (SightingThreadDto) -> Unit
-) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        when {
-            loading -> CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = PrimaryOrange
-            )
-            threads.none { it.avistamiento != null } -> EmptyState(
-                message = "Sin conversaciones activas",
-                subtitle = "Cuando alguien reporte avistamientos\nde tus mascotas, aparecerán aquí."
-            )
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                items(
-                    items = threads.filter { it.avistamiento != null },
-                    key = { it.mascota.mascotaId }
-                ) { thread ->
-                    OwnerThreadItem(thread = thread, onClick = { onOpenThread(thread) })
-                    HorizontalDivider(color = SurfaceVariantLight, thickness = 0.5.dp)
                 }
             }
         }
@@ -176,12 +90,7 @@ private fun OwnerThreadsTab(
 }
 
 @Composable
-private fun OwnerThreadItem(
-    thread: SightingThreadDto,
-    onClick: () -> Unit
-) {
-    val avi = thread.avistamiento ?: return
-
+private fun ChatRow(chat: ChatSummaryDto, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -191,7 +100,7 @@ private fun OwnerThreadItem(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        PetAvatar(fotoUrl = thread.mascota.fotoUrl, name = thread.mascota.nombre)
+        PetAvatar(fotoUrl = chat.mascota.fotoUrl, name = chat.mascota.nombre)
 
         Column(modifier = Modifier.weight(1f)) {
             Row(
@@ -200,66 +109,43 @@ private fun OwnerThreadItem(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = thread.mascota.nombre,
+                    text = chat.mascota.nombre,
                     fontWeight = FontWeight.SemiBold,
                     color = TextDark,
                     fontSize = 15.sp
                 )
+                chat.ultimaActividad?.let {
+                    Text(formatDateShort(it), color = TextGray, fontSize = 11.sp)
+                }
+            }
+
+            // Nombre del otro participante
+            chat.otroParticipante?.nombreCompleto?.let { nombre ->
                 Text(
-                    text = formatDateShort(avi.ultimaActividad),
+                    text = nombre,
                     color = TextGray,
-                    fontSize = 11.sp
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+
             Spacer(Modifier.height(3.dp))
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text(
-                    text = avi.ultimoMensaje ?: "${avi.totalHilos} rescatista(s) reportaron",
-                    color = if (avi.noLeidos > 0) TextDark else TextGray,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = if (avi.noLeidos > 0) FontWeight.Medium else FontWeight.Normal,
-                    modifier = Modifier.weight(1f)
-                )
-                if (avi.noLeidos > 0) UnreadBadge(avi.noLeidos)
-            }
-        }
-    }
-}
-
-// ── Pestaña rescatista — "Ayudé" ─────────────────────────────────────────────
-
-@Composable
-private fun RescuerParticipationsTab(
-    participations: List<MyParticipationDto>,
-    loading: Boolean,
-    onRefresh: () -> Unit,
-    onOpenThread: (MyParticipationDto) -> Unit
-) {
-    Box(modifier = Modifier.fillMaxSize()) {
-        when {
-            loading -> CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center),
-                color = PrimaryOrange
-            )
-            participations.isEmpty() -> EmptyState(
-                message = "Aún no ayudaste a nadie",
-                subtitle = "Cuando reportes avistamientos\nde mascotas perdidas, aparecerán aquí."
-            )
-            else -> LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                items(participations, key = { it.avistamientoId }) { participation ->
-                    RescuerParticipationItem(
-                        participation = participation,
-                        onClick = { onOpenThread(participation) }
+                StatusPreview(chat = chat, modifier = Modifier.weight(1f))
+                if (chat.estado == ChatEstado.ACEPTADA && chat.noLeidos > 0) {
+                    UnreadBadge(chat.noLeidos)
+                } else if (chat.estado == ChatEstado.PENDIENTE) {
+                    Icon(
+                        Icons.Default.Schedule,
+                        contentDescription = "Pendiente",
+                        tint = TextGray,
+                        modifier = Modifier.size(16.dp)
                     )
-                    HorizontalDivider(color = SurfaceVariantLight, thickness = 0.5.dp)
                 }
             }
         }
@@ -267,73 +153,23 @@ private fun RescuerParticipationsTab(
 }
 
 @Composable
-private fun RescuerParticipationItem(
-    participation: MyParticipationDto,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .background(Color.White)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        PetAvatar(
-            fotoUrl = participation.mascota.fotoUrl,
-            name = participation.mascota.nombre
-        )
-
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = participation.mascota.nombre,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextDark,
-                    fontSize = 15.sp
-                )
-                Text(
-                    text = formatDateShort(participation.ultimaActividad),
-                    color = TextGray,
-                    fontSize = 11.sp
-                )
-            }
-            Spacer(Modifier.height(3.dp))
-
-            val lastMsg = participation.ultimaRespuesta ?: participation.miUltimoMensaje ?: ""
-            val hasUnread = participation.noLeidos > 0
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = lastMsg.ifBlank { "Sin respuesta aún" },
-                    color = if (hasUnread) TextDark else TextGray,
-                    fontSize = 13.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = if (hasUnread) FontWeight.Medium else FontWeight.Normal,
-                    modifier = Modifier.weight(1f)
-                )
-                if (hasUnread) UnreadBadge(participation.noLeidos)
-            }
-
-            participation.dueno?.nombre?.let { ownerName ->
-                Text(
-                    text = "Dueño: $ownerName",
-                    color = TextGray,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 2.dp)
-                )
-            }
-        }
+private fun StatusPreview(chat: ChatSummaryDto, modifier: Modifier = Modifier) {
+    val hasUnread = chat.estado == ChatEstado.ACEPTADA && chat.noLeidos > 0
+    val (text, color) = when (chat.estado) {
+        ChatEstado.PENDIENTE ->
+            (if (chat.soyDueno) "Invitación enviada…" else "Te invitaron a chatear") to TextGray
+        ChatEstado.RECHAZADA -> "Invitación rechazada" to Color(0xFFC0392B)
+        else -> (chat.ultimoMensaje ?: "📷 Multimedia") to (if (hasUnread) TextDark else TextGray)
     }
+    Text(
+        text = text,
+        color = color,
+        fontSize = 13.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        fontWeight = if (hasUnread) FontWeight.Medium else FontWeight.Normal,
+        modifier = modifier
+    )
 }
 
 // ── Shared components ─────────────────────────────────────────────────────────

@@ -39,9 +39,6 @@ object SocketManager {
     private val _sightingNewFlow = MutableSharedFlow<SightingNewEvent>(extraBufferCapacity = 8)
     val sightingNewFlow = _sightingNewFlow.asSharedFlow()
 
-    private val _sightingCommentFlow = MutableSharedFlow<SightingCommentEvent>(extraBufferCapacity = 8)
-    val sightingCommentFlow = _sightingCommentFlow.asSharedFlow()
-
     // Alerta comunitaria activada — broadcast a todos, buffer mayor para no perderla
     private val _communityAlertFlow = MutableSharedFlow<CommunityAlertActivatedEvent>(extraBufferCapacity = 8)
     val communityAlertFlow = _communityAlertFlow.asSharedFlow()
@@ -52,6 +49,22 @@ object SocketManager {
 
     private val _lostPetRemovedFlow = MutableSharedFlow<MapLostPetRemovedEvent>(extraBufferCapacity = 16)
     val lostPetRemovedFlow = _lostPetRemovedFlow.asSharedFlow()
+
+    // ── Chat privado dueño ↔ rescatista ────────────────────────────────────────
+    private val _chatInviteFlow = MutableSharedFlow<ChatInviteEvent>(extraBufferCapacity = 8)
+    val chatInviteFlow = _chatInviteFlow.asSharedFlow()
+
+    private val _chatAcceptedFlow = MutableSharedFlow<ChatAcceptedEvent>(extraBufferCapacity = 8)
+    val chatAcceptedFlow = _chatAcceptedFlow.asSharedFlow()
+
+    private val _chatDeclinedFlow = MutableSharedFlow<ChatDeclinedEvent>(extraBufferCapacity = 8)
+    val chatDeclinedFlow = _chatDeclinedFlow.asSharedFlow()
+
+    private val _chatMessageFlow = MutableSharedFlow<ChatMessageEvent>(extraBufferCapacity = 16)
+    val chatMessageFlow = _chatMessageFlow.asSharedFlow()
+
+    private val _chatUnreadCountFlow = MutableSharedFlow<ChatUnreadCountEvent>(extraBufferCapacity = 16)
+    val chatUnreadCountFlow = _chatUnreadCountFlow.asSharedFlow()
 
     fun connect(jwtToken: String, context: Context) {
         disconnectClean()
@@ -131,16 +144,6 @@ object SocketManager {
                 }
             }
 
-            socket?.on("sighting:comment-new") { args ->
-                runCatching {
-                    val data = args[0] as JSONObject
-                    val event = gson.fromJson(data.toString(), SightingCommentEvent::class.java)
-                    _sightingCommentFlow.tryEmit(event)
-                }.onFailure { e ->
-                    Log.e("SocketManager", "sighting:comment-new parse error: ${e.message}")
-                }
-            }
-
             socket?.on("community:alert-activated") { args ->
                 runCatching {
                     val data = args[0] as JSONObject
@@ -171,6 +174,41 @@ object SocketManager {
                 }
             }
 
+            socket?.on("chat:invite") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    _chatInviteFlow.tryEmit(gson.fromJson(data.toString(), ChatInviteEvent::class.java))
+                }.onFailure { e -> Log.e("SocketManager", "chat:invite parse error: ${e.message}") }
+            }
+
+            socket?.on("chat:accepted") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    _chatAcceptedFlow.tryEmit(gson.fromJson(data.toString(), ChatAcceptedEvent::class.java))
+                }.onFailure { e -> Log.e("SocketManager", "chat:accepted parse error: ${e.message}") }
+            }
+
+            socket?.on("chat:declined") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    _chatDeclinedFlow.tryEmit(gson.fromJson(data.toString(), ChatDeclinedEvent::class.java))
+                }.onFailure { e -> Log.e("SocketManager", "chat:declined parse error: ${e.message}") }
+            }
+
+            socket?.on("chat:message") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    _chatMessageFlow.tryEmit(gson.fromJson(data.toString(), ChatMessageEvent::class.java))
+                }.onFailure { e -> Log.e("SocketManager", "chat:message parse error: ${e.message}") }
+            }
+
+            socket?.on("chat:unread-count") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    _chatUnreadCountFlow.tryEmit(gson.fromJson(data.toString(), ChatUnreadCountEvent::class.java))
+                }.onFailure { e -> Log.e("SocketManager", "chat:unread-count parse error: ${e.message}") }
+            }
+
             socket?.connect()
 
         } catch (e: Exception) {
@@ -195,10 +233,14 @@ object SocketManager {
             s.off("owner:profile-updated")
             s.off("pet:profile-updated")
             s.off("sighting:new")
-            s.off("sighting:comment-new")
             s.off("community:alert-activated")
             s.off("map:lost-pet-added")
             s.off("map:lost-pet-removed")
+            s.off("chat:invite")
+            s.off("chat:accepted")
+            s.off("chat:declined")
+            s.off("chat:message")
+            s.off("chat:unread-count")
             s.disconnect()
             socket = null
             Log.d("SocketManager", "Socket desconectado y listeners eliminados")

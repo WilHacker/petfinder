@@ -112,7 +112,7 @@ fun PetDetailScreen(
     onNavigateToMedical: () -> Unit = {},
     onNavigateToEdit: () -> Unit = {},
     onViewOnMap: (mascotaId: String) -> Unit = {},
-    onOpenThread: (avistamientoId: String, rescatistaUsuarioId: String) -> Unit = { _, _ -> }
+    onOpenConversation: (conversacionId: String) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -137,6 +137,18 @@ fun PetDetailScreen(
     val communityAlertDialog by viewModel.communityAlertDialog.collectAsStateWithLifecycle()
     val rewardUpdating by viewModel.rewardUpdating.collectAsStateWithLifecycle()
     val rewardResult by viewModel.rewardResult.collectAsStateWithLifecycle()
+    val chatInfo by viewModel.chatInfo.collectAsStateWithLifecycle()
+
+    // Navega a la conversación cuando se inicia/reabre el chat privado
+    LaunchedEffect(Unit) {
+        viewModel.chatStarted.collect { conversacionId -> onOpenConversation(conversacionId) }
+    }
+    LaunchedEffect(chatInfo) {
+        chatInfo?.let {
+            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearChatInfo()
+        }
+    }
 
     var activeModal by remember { mutableStateOf<PetDetailModal>(PetDetailModal.None) }
     var locationSuccess by remember { mutableStateOf(false) }
@@ -794,7 +806,7 @@ fun PetDetailScreen(
                     }
                 },
                 onSendThanks = { id, msg -> viewModel.sendThanks(id, msg) },
-                onOpenThread = { avistamientoId -> onOpenThread(avistamientoId, "") },
+                onStartChat = { avistamientoId -> viewModel.startPrivateChat(avistamientoId) },
                 onCommunityAlert = { activeModal = PetDetailModal.CommunityAlertSheet },
                 onUpdateReward = { activeModal = PetDetailModal.RewardSheet },
                 onNavigateToEdit = onNavigateToEdit
@@ -927,7 +939,7 @@ private fun PetDetailContent(
     onRemoveOwner: (String) -> Unit = {},
     onReportSighting: (desc: String, foto: okhttp3.MultipartBody.Part?) -> Unit = { _, _ -> },
     onSendThanks: (String, String?) -> Unit = { _, _ -> },
-    onOpenThread: (avistamientoId: String) -> Unit = {},
+    onStartChat: (avistamientoId: String) -> Unit = {},
     onCommunityAlert: () -> Unit = {},
     onUpdateReward: () -> Unit = {},
     onNavigateToEdit: () -> Unit = {}
@@ -1394,7 +1406,7 @@ private fun PetDetailContent(
                 sightings.take(5).forEach { sighting ->
                     SightingCard(
                         sighting = sighting,
-                        onOpenThread = { onOpenThread(sighting.avistamientoId) }
+                        onStartChat = { onStartChat(sighting.avistamientoId) }
                     )
                     Spacer(Modifier.height(8.dp))
                 }
@@ -1689,7 +1701,7 @@ private fun ReportRow(report: PetReportDto) {
 @Composable
 private fun SightingCard(
     sighting: SightingDto,
-    onOpenThread: () -> Unit
+    onStartChat: () -> Unit
 ) {
     val fechaLegible = remember(sighting.fechaAvistamiento) {
         try {
@@ -1751,10 +1763,10 @@ private fun SightingCard(
                 }
             }
 
-            // Botón Chat privado
+            // Botón Iniciar chat privado (solo el dueño puede; el backend valida)
             Spacer(Modifier.height(10.dp))
             OutlinedButton(
-                onClick = onOpenThread,
+                onClick = onStartChat,
                 modifier = Modifier.fillMaxWidth().height(38.dp),
                 shape = RoundedCornerShape(10.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryOrange),
@@ -1763,7 +1775,7 @@ private fun SightingCard(
                 Icon(Icons.Default.Chat, null, tint = PrimaryOrange, modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(6.dp))
                 Text(
-                    "Chat privado",
+                    "Iniciar chat privado",
                     color = PrimaryOrange,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold

@@ -34,11 +34,12 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.frontend.petfinder.chat.data.ChatEstado
+import com.frontend.petfinder.chat.data.ChatMessageDto
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.TextDark
 import com.frontend.petfinder.core.theme.TextGray
 import com.frontend.petfinder.core.utils.ImageUtils
-import com.frontend.petfinder.sightings.data.SightingCommentDto
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -50,24 +51,19 @@ import kotlinx.coroutines.withContext
 @SuppressLint("MissingPermission")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SightingThreadScreen(
-    avistamientoId: String,
-    rescatistaUsuarioId: String,
-    petName: String = "Mascota",
-    rescatistaName: String = "Rescatista",
+fun ConversationScreen(
+    conversacionId: String,
     onNavigateBack: () -> Unit,
-    viewModel: SightingThreadViewModel = viewModel()
+    viewModel: ConversationViewModel = viewModel()
 ) {
-    LaunchedEffect(avistamientoId) {
-        viewModel.load(avistamientoId, rescatistaUsuarioId)
-    }
+    LaunchedEffect(conversacionId) { viewModel.load(conversacionId) }
 
-    val comments by viewModel.comments.collectAsStateWithLifecycle()
+    val detail by viewModel.detail.collectAsStateWithLifecycle()
+    val messages by viewModel.messages.collectAsStateWithLifecycle()
     val loading by viewModel.loading.collectAsStateWithLifecycle()
     val sending by viewModel.sending.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val currentUserId by viewModel.currentUserId.collectAsStateWithLifecycle()
-    val isOwner by viewModel.isOwner.collectAsStateWithLifecycle()
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -100,13 +96,15 @@ fun SightingThreadScreen(
         }
     }
 
-    LaunchedEffect(comments.size) {
-        if (comments.isNotEmpty()) {
-            runCatching { listState.animateScrollToItem(comments.lastIndex) }
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            runCatching { listState.animateScrollToItem(messages.lastIndex) }
         }
     }
 
-    val topLabel = if (isOwner) rescatistaName else petName
+    val header = remember(detail, currentUserId) { viewModel.headerParticipant() }
+    val estado = detail?.estado
+    val isActive = estado == ChatEstado.ACEPTADA
 
     Scaffold(
         containerColor = Color(0xFFF2F2F7),
@@ -115,18 +113,19 @@ fun SightingThreadScreen(
                 title = {
                     Column {
                         Text(
-                            text = topLabel,
+                            text = header?.nombreCompleto ?: "Chat",
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.SemiBold,
                                 color = TextDark
                             )
                         )
-                        Text(
-                            text = if (isOwner) "Rescatista · $petName"
-                                   else "Conversación con el dueño",
-                            style = MaterialTheme.typography.bodySmall.copy(color = TextGray),
-                            fontSize = 12.sp
-                        )
+                        detail?.mascota?.nombre?.let {
+                            Text(
+                                text = "sobre $it 🐾",
+                                style = MaterialTheme.typography.bodySmall.copy(color = TextGray),
+                                fontSize = 12.sp
+                            )
+                        }
                     }
                 },
                 navigationIcon = {
@@ -138,49 +137,56 @@ fun SightingThreadScreen(
             )
         },
         bottomBar = {
-            ChatInputBar(
-                inputText = inputText,
-                onInputChange = { inputText = it },
-                selectedPhotoUri = selectedPhotoUri,
-                photoLat = photoLat,
-                photoLng = photoLng,
-                sending = sending,
-                isOwner = isOwner,
-                onAttachPhoto = { photoLauncher.launch("image/*") },
-                onClearPhoto = {
-                    selectedPhotoUri = null
-                    photoLat = null
-                    photoLng = null
-                },
-                onSend = {
-                    if (inputText.isNotBlank() || selectedPhotoUri != null) {
-                        val mensajeToSend = inputText.trim().takeIf { it.isNotBlank() }
-                        val capturedUri = selectedPhotoUri
-                        val capturedLat = photoLat
-                        val capturedLng = photoLng
-                        inputText = ""
+            when {
+                viewModel.esInvitacionPendienteParaMi -> InviteActionBar(
+                    onAccept = { viewModel.accept() },
+                    onDecline = { viewModel.decline(onDeclined = onNavigateBack) }
+                )
+                estado == ChatEstado.PENDIENTE -> InfoBar("Esperando que el rescatista acepte la invitación…")
+                estado == ChatEstado.RECHAZADA -> InfoBar("La invitación fue rechazada. El chat no está disponible.")
+                else -> ChatInputBar(
+                    inputText = inputText,
+                    onInputChange = { inputText = it },
+                    selectedPhotoUri = selectedPhotoUri,
+                    photoLat = photoLat,
+                    sending = sending,
+                    enabled = isActive,
+                    onAttachPhoto = { photoLauncher.launch("image/*") },
+                    onClearPhoto = {
                         selectedPhotoUri = null
                         photoLat = null
                         photoLng = null
-                        scope.launch(Dispatchers.IO) {
-                            val fotoPart = capturedUri?.let { uri ->
-                                runCatching {
-                                    ImageUtils.processImagesForUpload(context, listOf(uri), "foto")
-                                        .firstOrNull()
-                                }.getOrNull()
-                            }
-                            withContext(Dispatchers.Main) {
-                                viewModel.sendMessage(
-                                    mensaje = mensajeToSend,
-                                    foto = fotoPart,
-                                    lat = capturedLat,
-                                    lng = capturedLng
-                                )
+                    },
+                    onSend = {
+                        if (inputText.isNotBlank() || selectedPhotoUri != null) {
+                            val mensajeToSend = inputText.trim().takeIf { it.isNotBlank() }
+                            val capturedUri = selectedPhotoUri
+                            val capturedLat = photoLat
+                            val capturedLng = photoLng
+                            inputText = ""
+                            selectedPhotoUri = null
+                            photoLat = null
+                            photoLng = null
+                            scope.launch(Dispatchers.IO) {
+                                val fotoPart = capturedUri?.let { uri ->
+                                    runCatching {
+                                        ImageUtils.processImagesForUpload(context, listOf(uri), "foto")
+                                            .firstOrNull()
+                                    }.getOrNull()
+                                }
+                                withContext(Dispatchers.Main) {
+                                    viewModel.sendMessage(
+                                        contenido = mensajeToSend,
+                                        foto = fotoPart,
+                                        lat = capturedLat,
+                                        lng = capturedLng
+                                    )
+                                }
                             }
                         }
                     }
-                }
-            )
+                )
+            }
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
@@ -189,7 +195,7 @@ fun SightingThreadScreen(
                     modifier = Modifier.align(Alignment.Center),
                     color = PrimaryOrange
                 )
-                comments.isEmpty() -> EmptyThreadState(isOwner = isOwner, petName = petName)
+                messages.isEmpty() -> EmptyConversation(estado = estado)
                 else -> LazyColumn(
                     state = listState,
                     modifier = Modifier
@@ -198,12 +204,8 @@ fun SightingThreadScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
-                    items(comments, key = { it.comentarioId }) { comment ->
-                        MessageBubble(
-                            comment = comment,
-                            isMe = comment.autorUsuarioId != null &&
-                                    comment.autorUsuarioId == currentUserId
-                        )
+                    items(messages, key = { it.mensajeId }) { msg ->
+                        MessageBubble(message = msg, isMe = viewModel.isMe(msg))
                     }
                 }
             }
@@ -227,6 +229,55 @@ fun SightingThreadScreen(
     }
 }
 
+// ── Banner de invitación (rescatista) ─────────────────────────────────────────
+
+@Composable
+private fun InviteActionBar(onAccept: () -> Unit, onDecline: () -> Unit) {
+    Surface(shadowElevation = 8.dp, color = Color.White) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(16.dp)
+        ) {
+            Text(
+                "Te invitaron a este chat privado. ¿Aceptas?",
+                fontSize = 13.sp,
+                color = TextDark,
+                modifier = Modifier.padding(bottom = 10.dp)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = onDecline,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Rechazar", color = TextGray) }
+                Button(
+                    onClick = onAccept,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
+                ) { Text("Aceptar", color = Color.White) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InfoBar(text: String) {
+    Surface(shadowElevation = 8.dp, color = Color.White) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(text, fontSize = 13.sp, color = TextGray, textAlign = TextAlign.Center)
+        }
+    }
+}
+
 // ── Barra de input ────────────────────────────────────────────────────────────
 
 @Composable
@@ -235,14 +286,13 @@ private fun ChatInputBar(
     onInputChange: (String) -> Unit,
     selectedPhotoUri: Uri?,
     photoLat: Double?,
-    photoLng: Double?,
     sending: Boolean,
-    isOwner: Boolean,
+    enabled: Boolean,
     onAttachPhoto: () -> Unit,
     onClearPhoto: () -> Unit,
     onSend: () -> Unit
 ) {
-    val canSend = (inputText.isNotBlank() || selectedPhotoUri != null) && !sending
+    val canSend = (inputText.isNotBlank() || selectedPhotoUri != null) && !sending && enabled
 
     Surface(shadowElevation = 8.dp, color = Color.White) {
         Column(
@@ -267,6 +317,7 @@ private fun ChatInputBar(
             ) {
                 IconButton(
                     onClick = onAttachPhoto,
+                    enabled = enabled,
                     modifier = Modifier
                         .size(42.dp)
                         .clip(CircleShape)
@@ -286,13 +337,10 @@ private fun ChatInputBar(
                 OutlinedTextField(
                     value = inputText,
                     onValueChange = onInputChange,
+                    enabled = enabled,
                     modifier = Modifier.weight(1f),
                     placeholder = {
-                        Text(
-                            text = if (isOwner) "Responder…" else "Escribe un mensaje…",
-                            color = TextGray,
-                            fontSize = 14.sp
-                        )
+                        Text("Escribe un mensaje…", color = TextGray, fontSize = 14.sp)
                     },
                     shape = RoundedCornerShape(24.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -333,14 +381,8 @@ private fun ChatInputBar(
     }
 }
 
-// ── Preview de foto ───────────────────────────────────────────────────────────
-
 @Composable
-private fun PhotoPreviewBar(
-    uri: Uri,
-    hasLocation: Boolean,
-    onClear: () -> Unit
-) {
+private fun PhotoPreviewBar(uri: Uri, hasLocation: Boolean, onClear: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -380,10 +422,7 @@ private fun PhotoPreviewBar(
 // ── Burbuja de mensaje ────────────────────────────────────────────────────────
 
 @Composable
-private fun MessageBubble(
-    comment: SightingCommentDto,
-    isMe: Boolean
-) {
+private fun MessageBubble(message: ChatMessageDto, isMe: Boolean) {
     val bubbleColor = if (isMe) PrimaryOrange else Color.White
     val textColor = if (isMe) Color.White else TextDark
     val alignment = if (isMe) Alignment.End else Alignment.Start
@@ -396,12 +435,8 @@ private fun MessageBubble(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = alignment
     ) {
-        // Nombre del autor — solo mensajes ajenos
-        if (!isMe && comment.autor != null) {
-            val name = listOfNotNull(
-                comment.autor.nombre,
-                comment.autor.apellidoPaterno
-            ).joinToString(" ")
+        if (!isMe && message.autor != null) {
+            val name = message.autor.nombreCompleto
             if (name.isNotBlank()) {
                 Text(
                     text = name,
@@ -420,8 +455,7 @@ private fun MessageBubble(
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                // Foto adjunta
-                comment.fotoUrl?.let { url ->
+                message.fotoUrl?.let { url ->
                     AsyncImage(
                         model = url,
                         contentDescription = "Foto",
@@ -434,18 +468,11 @@ private fun MessageBubble(
                     Spacer(Modifier.height(6.dp))
                 }
 
-                // Texto — nullable, solo mostrar si no es null/blank
-                comment.mensaje?.takeIf { it.isNotBlank() }?.let { texto ->
-                    Text(
-                        text = texto,
-                        color = textColor,
-                        fontSize = 14.sp,
-                        lineHeight = 19.sp
-                    )
+                message.contenido?.takeIf { it.isNotBlank() }?.let { texto ->
+                    Text(text = texto, color = textColor, fontSize = 14.sp, lineHeight = 19.sp)
                 }
 
-                // Hora
-                val time = remember(comment.creadoEl) { formatTime(comment.creadoEl) }
+                val time = remember(message.creadoEl) { formatTime(message.creadoEl) }
                 Row(
                     modifier = Modifier
                         .align(Alignment.End)
@@ -453,7 +480,7 @@ private fun MessageBubble(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (comment.lat != null) {
+                    if (message.lat != null && message.lng != null) {
                         Text(
                             "📍",
                             fontSize = 9.sp,
@@ -471,22 +498,22 @@ private fun MessageBubble(
     }
 }
 
-// ── Empty state ───────────────────────────────────────────────────────────────
-
 @Composable
-private fun EmptyThreadState(isOwner: Boolean, petName: String) {
+private fun EmptyConversation(estado: String?) {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("Sin mensajes aún", color = TextGray, fontSize = 15.sp)
+        val (title, sub) = when (estado) {
+            ChatEstado.PENDIENTE -> "Invitación pendiente" to "Cuando se acepte la invitación,\npodrán intercambiar mensajes."
+            ChatEstado.RECHAZADA -> "Chat no disponible" to "La invitación fue rechazada."
+            else -> "Sin mensajes aún" to "Escribe el primer mensaje\npara coordinar el rescate."
+        }
+        Text(title, color = TextGray, fontSize = 15.sp)
         Spacer(Modifier.height(6.dp))
         Text(
-            text = if (isOwner)
-                "Alguien reportó un avistamiento de $petName.\nResponde para coordinar."
-            else
-                "Escribe para comunicarte\ncon el dueño de la mascota.",
+            text = sub,
             color = Color(0xFFBBBBBB),
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
@@ -494,8 +521,6 @@ private fun EmptyThreadState(isOwner: Boolean, petName: String) {
         )
     }
 }
-
-// ── Util ──────────────────────────────────────────────────────────────────────
 
 private fun formatTime(isoDateTime: String): String {
     return try {

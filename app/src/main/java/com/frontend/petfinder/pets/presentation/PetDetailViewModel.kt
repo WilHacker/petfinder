@@ -11,6 +11,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.frontend.petfinder.chat.data.ChatRepository
 import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PetDetailDto
 import com.frontend.petfinder.pets.data.dto.PetReportDto
@@ -22,8 +23,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
 import retrofit2.HttpException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -72,6 +75,13 @@ class PetDetailViewModel : ViewModel() {
 
     private val _qrDownloadResult = MutableStateFlow<String?>(null)
     val qrDownloadResult: StateFlow<String?> = _qrDownloadResult.asStateFlow()
+
+    // ── Chat privado: evento one-shot para navegar al abrir/crear la conversación ──
+    private val _chatStarted = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val chatStarted = _chatStarted.asSharedFlow()
+
+    private val _chatInfo = MutableStateFlow<String?>(null)
+    val chatInfo: StateFlow<String?> = _chatInfo.asStateFlow()
 
     fun load(petId: String) {
         viewModelScope.launch {
@@ -122,6 +132,25 @@ class PetDetailViewModel : ViewModel() {
     }
 
     fun clearSightingError() { _sightingError.value = null }
+
+    /**
+     * El dueño inicia (o reabre) el chat privado con el rescatista de un avistamiento.
+     * En éxito emite el conversacionId para navegar; el estado (pendiente/aceptada) lo
+     * resuelve la propia pantalla de conversación.
+     */
+    fun startPrivateChat(avistamientoId: String) {
+        viewModelScope.launch {
+            ChatRepository.startChat(avistamientoId).fold(
+                onSuccess = { resp ->
+                    _chatInfo.value = resp.mensaje ?: "Invitación enviada al rescatista"
+                    _chatStarted.tryEmit(resp.conversacionId)
+                },
+                onFailure = { _chatInfo.value = it.message ?: "No se pudo iniciar el chat" }
+            )
+        }
+    }
+
+    fun clearChatInfo() { _chatInfo.value = null }
 
     fun updateLocation(petId: String, lat: Double, lng: Double) {
         viewModelScope.launch {

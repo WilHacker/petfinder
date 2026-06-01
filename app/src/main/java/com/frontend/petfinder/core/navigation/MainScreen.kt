@@ -14,11 +14,16 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -26,9 +31,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.frontend.petfinder.PetFinderApp
+import com.frontend.petfinder.chat.data.ChatRepository
+import com.frontend.petfinder.chat.presentation.ChatListViewModel
 import com.frontend.petfinder.chat.presentation.ChatScreen
-import com.frontend.petfinder.chat.presentation.ChatViewModel
 import com.frontend.petfinder.chat.presentation.UnreadBadge
+import com.frontend.petfinder.core.network.ChatInviteEvent
+import com.frontend.petfinder.core.network.SocketManager
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.TextGray
 import com.frontend.petfinder.geofencing.presentation.MapHomeScreen
@@ -42,11 +50,18 @@ fun MainScreen(rootNavController: NavHostController) {
 
     // CEREBRO COMPARTIDO: Ambas pestañas verán exactamente los mismos datos
     val sharedMapViewModel: MapViewModel = viewModel()
-    val sharedChatViewModel: ChatViewModel = viewModel()
+    val sharedChatViewModel: ChatListViewModel = viewModel()
     val unreadTotal by sharedChatViewModel.unreadTotal.collectAsStateWithLifecycle()
 
     val rol by PetFinderApp.sessionManager.getUserRole().collectAsStateWithLifecycle(initialValue = null)
     val isAdmin = rol == "admin"
+
+    // Invitación de chat entrante (WS chat:invite) — diálogo global sobre cualquier pestaña
+    val inviteScope = rememberCoroutineScope()
+    var pendingInvite by remember { mutableStateOf<ChatInviteEvent?>(null) }
+    LaunchedEffect(Unit) {
+        SocketManager.chatInviteFlow.collect { pendingInvite = it }
+    }
 
     // Observa si PetDetailScreen pidió centrar el mapa en una mascota
     val focusMascotaId by rootNavController.currentBackStackEntry
@@ -125,14 +140,9 @@ fun MainScreen(rootNavController: NavHostController) {
                 composable(NavRoutes.Chat.route) {
                     ChatScreen(
                         viewModel = sharedChatViewModel,
-                        onOpenThread = { avistamientoId, rescatistaUsuarioId, petName, rescatistaName ->
+                        onOpenChat = { conversacionId ->
                             rootNavController.navigate(
-                                NavRoutes.SightingThread.createRoute(
-                                    avistamientoId = avistamientoId,
-                                    petName = petName,
-                                    rescatistaName = rescatistaName,
-                                    rescatistaUsuarioId = rescatistaUsuarioId
-                                )
+                                NavRoutes.Conversation.createRoute(conversacionId)
                             )
                         }
                     )
@@ -140,6 +150,71 @@ fun MainScreen(rootNavController: NavHostController) {
             }
         }
     }
+
+    pendingInvite?.let { invite ->
+        ChatInviteDialog(
+            invite = invite,
+            onAccept = {
+                pendingInvite = null
+                inviteScope.launch {
+                    ChatRepository.acceptChat(invite.conversacionId).onSuccess {
+                        rootNavController.navigate(
+                            NavRoutes.Conversation.createRoute(invite.conversacionId)
+                        )
+                    }
+                }
+            },
+            onDecline = {
+                pendingInvite = null
+                inviteScope.launch { ChatRepository.declineChat(invite.conversacionId) }
+            },
+            onDismiss = { pendingInvite = null }
+        )
+    }
+}
+
+@Composable
+private fun ChatInviteDialog(
+    invite: ChatInviteEvent,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Box(
+                modifier = Modifier.size(56.dp).clip(CircleShape).background(Color(0xFFFDE8D4)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (invite.dueno.fotoUrl != null) {
+                    AsyncImage(
+                        model = invite.dueno.fotoUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize().clip(CircleShape),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(Icons.Default.ChatBubble, null, tint = PrimaryOrange)
+                }
+            }
+        },
+        title = { Text("Nueva solicitud de chat", fontWeight = FontWeight.Bold) },
+        text = {
+            Text(
+                "${invite.dueno.nombreCompleto} quiere hablarte sobre su mascota \"${invite.mascota.nombre}\" 🐾"
+            )
+        },
+        confirmButton = {
+            Button(
+                onClick = onAccept,
+                colors = ButtonDefaults.buttonColors(containerColor = PrimaryOrange)
+            ) { Text("Aceptar", color = Color.White) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDecline) { Text("Rechazar", color = TextGray) }
+        }
+    )
 }
 
 @Composable
