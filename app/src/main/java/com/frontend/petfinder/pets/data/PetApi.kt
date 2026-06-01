@@ -84,6 +84,20 @@ interface PetApi {
         @Part fotos: List<MultipartBody.Part>
     ): Response<List<FotoMascotaDto>>
 
+    @Multipart
+    @PUT("pets/{id}/photos/replace")
+    suspend fun replacePetPhotos(
+        @Path("id") petId: String,
+        @Part("fotoPrincipalIndex") fotoPrincipalIndex: RequestBody?,
+        @Part fotos: List<MultipartBody.Part>
+    ): Response<List<FotoMascotaDto>>
+
+    @PUT("pets/{id}/photos/{fotoId}/principal")
+    suspend fun setPrincipalPhoto(
+        @Path("id") petId: String,
+        @Path("fotoId") fotoId: Int
+    ): Response<SetPrincipalResponse>
+
     @DELETE("pets/{id}/photos/{fotoId}")
     suspend fun deletePetPhoto(
         @Path("id") petId: String,

@@ -167,9 +167,16 @@ data class UpdateLocationRequest(
 
 data class UpdatePetRequest(
     @SerializedName("nombre") val nombre: String? = null,
+    @SerializedName("tipoId") val tipoId: Int? = null,
     @SerializedName("colorPrimario") val colorPrimario: String? = null,
     @SerializedName("rasgosParticulares") val rasgosParticulares: String? = null,
     @SerializedName("sexo") val sexo: String? = null
+)
+
+// Respuesta de PUT /pets/{id}/photos/{fotoId}/principal
+data class SetPrincipalResponse(
+    @SerializedName("ok") val ok: Boolean = false,
+    @SerializedName("fotoPrincipalUrl") val fotoPrincipalUrl: String? = null
 )
 
 data class AddOwnerRequest(

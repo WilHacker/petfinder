@@ -59,7 +59,8 @@ fun EditPetScreen(
     val rasgos           by viewModel.rasgosParticulares.collectAsStateWithLifecycle()
     val existingPhotos   by viewModel.existingPhotos.collectAsStateWithLifecycle()
     val newPhotos        by viewModel.newPhotos.collectAsStateWithLifecycle()
-    val deletingIds      by viewModel.photoDeletingIds.collectAsStateWithLifecycle()
+    val photosToRemove   by viewModel.photosToRemove.collectAsStateWithLifecycle()
+    val principal        by viewModel.principal.collectAsStateWithLifecycle()
     val saveState        by viewModel.saveState.collectAsStateWithLifecycle()
     val deleteState      by viewModel.deleteState.collectAsStateWithLifecycle()
 
@@ -158,10 +159,11 @@ fun EditPetScreen(
             // ── SECCIÓN 1: Fotos ───────────────────────────────────────────
             EditSectionHeader("Fotos")
 
-            val totalPhotos = existingPhotos.size + newPhotos.size
-            val canAddMore  = totalPhotos < 4
+            val keptCount  = existingPhotos.count { it.fotoId !in photosToRemove }
+            val finalCount = keptCount + newPhotos.size
+            val canAddMore = finalCount < 4
 
-            if (totalPhotos == 0) {
+            if (existingPhotos.isEmpty() && newPhotos.isEmpty()) {
                 // Estado vacío
                 Surface(
                     modifier = Modifier
@@ -187,100 +189,37 @@ fun EditPetScreen(
                     }
                 }
             } else {
-                Row(
+                FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     // Fotos existentes del servidor
-                    existingPhotos.forEachIndexed { index, foto ->
-                        val isDeleting = foto.fotoId in deletingIds
-                        val isPrincipal = foto.esPrincipal
-                        Box(modifier = Modifier.size(80.dp)) {
-                            AsyncImage(
-                                model = foto.fotoUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .border(
-                                        width = if (isPrincipal) 2.dp else 0.dp,
-                                        color = if (isPrincipal) PrimaryOrange else Color.Transparent,
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
-                            )
-                            if (isPrincipal) {
-                                Surface(
-                                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
-                                    color = PrimaryOrange,
-                                    shape = RoundedCornerShape(4.dp)
-                                ) {
-                                    Text(
-                                        "Principal",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                            // Overlay de carga al borrar
-                            if (isDeleting) {
-                                Box(
-                                    modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)).background(Color.Black.copy(alpha = 0.4f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-                                }
-                            } else if (totalPhotos > 1) {
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(4.dp)
-                                        .size(22.dp)
-                                        .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-                                        .clickable { viewModel.deleteExistingPhoto(mascotaId, foto.fotoId) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp))
-                                }
-                            }
-                        }
+                    existingPhotos.forEach { foto ->
+                        val markedForRemoval = foto.fotoId in photosToRemove
+                        val isPrincipal = (principal as? EditPetViewModel.Principal.Existing)?.fotoId == foto.fotoId
+                        PhotoThumb(
+                            model = foto.fotoUrl,
+                            isPrincipal = isPrincipal && !markedForRemoval,
+                            markedForRemoval = markedForRemoval,
+                            badge = "Principal".takeIf { isPrincipal && !markedForRemoval },
+                            onToggleRemove = { viewModel.toggleRemoveExisting(foto.fotoId) },
+                            onSetPrincipal = { viewModel.setPrincipalExisting(foto.fotoId) }
+                        )
                     }
 
                     // Fotos nuevas (aún no subidas)
                     newPhotos.forEachIndexed { index, uri ->
-                        Box(modifier = Modifier.size(80.dp)) {
-                            AsyncImage(
-                                model = uri,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp))
-                            )
-                            // Badge "Nueva"
-                            Surface(
-                                modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
-                                color = Color(0xFF1976D2),
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    "Nueva",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .align(Alignment.TopEnd)
-                                    .padding(4.dp)
-                                    .size(22.dp)
-                                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
-                                    .clickable { viewModel.removeNewPhoto(index) },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp))
-                            }
-                        }
+                        val isPrincipal = (principal as? EditPetViewModel.Principal.New)?.index == index
+                        PhotoThumb(
+                            model = uri,
+                            isPrincipal = isPrincipal,
+                            markedForRemoval = false,
+                            badge = if (isPrincipal) "Principal" else "Nueva",
+                            badgeColor = if (isPrincipal) PrimaryOrange else Color(0xFF1976D2),
+                            onToggleRemove = { viewModel.removeNewPhoto(index) },
+                            onSetPrincipal = { viewModel.setPrincipalNew(index) }
+                        )
                     }
 
                     // Botón agregar más
@@ -304,9 +243,10 @@ fun EditPetScreen(
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    "${totalPhotos}/4 fotos · Las nuevas se subirán al guardar",
+                    "${finalCount}/4 fotos · ☆ elige la principal · X quita · se aplica al guardar",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (finalCount < 1) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -369,7 +309,7 @@ fun EditPetScreen(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                listOf("M" to "Macho", "H" to "Hembra").forEachIndexed { index, (value, label) ->
+                listOf("M" to "Macho", "F" to "Hembra").forEachIndexed { index, (value, label) ->
                     SegmentedButton(
                         selected = sexo == value,
                         onClick = { viewModel.onSexoChange(value) },
@@ -534,6 +474,98 @@ fun EditPetScreen(
             }
 
             Spacer(Modifier.height(48.dp))
+        }
+    }
+}
+
+@Composable
+private fun PhotoThumb(
+    model: Any?,
+    isPrincipal: Boolean,
+    markedForRemoval: Boolean,
+    badge: String?,
+    badgeColor: Color = PrimaryOrange,
+    onToggleRemove: () -> Unit,
+    onSetPrincipal: () -> Unit
+) {
+    Box(modifier = Modifier.size(80.dp)) {
+        AsyncImage(
+            model = model,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(12.dp))
+                .border(
+                    width = if (isPrincipal) 2.dp else 0.dp,
+                    color = if (isPrincipal) PrimaryOrange else Color.Transparent,
+                    shape = RoundedCornerShape(12.dp)
+                )
+        )
+
+        if (markedForRemoval) {
+            // Marcada para quitar: atenuada + botón deshacer
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .clickable { onToggleRemove() },
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Refresh, "Deshacer", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Text("Deshacer", style = MaterialTheme.typography.labelSmall, color = Color.White)
+                }
+            }
+        } else {
+            badge?.let {
+                Surface(
+                    modifier = Modifier.align(Alignment.BottomStart).padding(4.dp),
+                    color = badgeColor,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // Quitar (marcar)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(22.dp)
+                    .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                    .clickable { onToggleRemove() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp))
+            }
+
+            // Estrella: elegir como principal (si no lo es ya)
+            if (!isPrincipal) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(4.dp)
+                        .size(22.dp)
+                        .background(Color.Black.copy(alpha = 0.55f), CircleShape)
+                        .clickable { onSetPrincipal() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Default.StarBorder,
+                        contentDescription = "Hacer principal",
+                        tint = Color.White,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
         }
     }
 }

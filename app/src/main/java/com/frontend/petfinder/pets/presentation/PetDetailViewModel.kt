@@ -83,7 +83,10 @@ class PetDetailViewModel : ViewModel() {
     private val _chatInfo = MutableStateFlow<String?>(null)
     val chatInfo: StateFlow<String?> = _chatInfo.asStateFlow()
 
+    private var currentPetId: String? = null
+
     fun load(petId: String) {
+        currentPetId = petId
         viewModelScope.launch {
             _state.value = DetailState.Loading
 
@@ -341,6 +344,14 @@ class PetDetailViewModel : ViewModel() {
 
 
     private fun observeSightingEvents() {
+        // Cambios de perfil (nombre/color/rasgos/foto principal) hechos por un co-propietario
+        viewModelScope.launch {
+            SocketManager.petProfileFlow.collect { event ->
+                if (event.mascotaId == currentPetId) {
+                    currentPetId?.let { load(it) }   // recarga silenciosa de la ficha
+                }
+            }
+        }
         viewModelScope.launch {
             SocketManager.sightingNewFlow.collect { event ->
                 val nuevo = SightingDto(

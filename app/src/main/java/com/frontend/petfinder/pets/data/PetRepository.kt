@@ -2,13 +2,30 @@ package com.frontend.petfinder.pets.data
 
 import com.frontend.petfinder.core.network.ApiServices
 import com.frontend.petfinder.pets.data.dto.*
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import retrofit2.HttpException
+import retrofit2.Response
 
 
 
 object PetRepository {
+
+    /** Extrae el `message` legible del cuerpo de error del backend (NestJS). */
+    private fun backendMessage(response: Response<*>, fallback: String): String =
+        runCatching {
+            val body = response.errorBody()?.string().orEmpty()
+            when (val msg = JSONObject(body).opt("message")) {
+                is String -> msg.ifBlank { fallback }
+                is org.json.JSONArray -> (0 until msg.length())
+                    .joinToString(" ") { msg.getString(it) }
+                    .ifBlank { fallback }
+                else -> fallback
+            }
+        }.getOrDefault(fallback)
 
     suspend fun getMyPets(): Result<List<PetListItemDto>> = runCatching {
         val r = ApiServices.pets.getMyPets()
@@ -124,7 +141,26 @@ object PetRepository {
 
     suspend fun updatePet(petId: String, request: UpdatePetRequest): Result<Unit> = runCatching {
         val r = ApiServices.pets.updatePet(petId, request)
-        if (r.isSuccessful) Unit else throw HttpException(r)
+        if (r.isSuccessful) Unit
+        else throw Exception(backendMessage(r, "No se pudieron guardar los cambios"))
+    }
+
+    /** Reemplaza TODO el álbum de forma atómica (sube nuevas + borra viejas en una transacción). */
+    suspend fun replacePetPhotos(
+        petId: String,
+        fotos: List<MultipartBody.Part>,
+        fotoPrincipalIndex: Int = 0
+    ): Result<List<FotoMascotaDto>> = runCatching {
+        val idxBody = fotoPrincipalIndex.toString().toRequestBody("text/plain".toMediaType())
+        val r = ApiServices.pets.replacePetPhotos(petId, idxBody, fotos)
+        if (r.isSuccessful) r.body() ?: emptyList()
+        else throw Exception(backendMessage(r, "No se pudieron reemplazar las fotos"))
+    }
+
+    suspend fun setPrincipalPhoto(petId: String, fotoId: Int): Result<SetPrincipalResponse> = runCatching {
+        val r = ApiServices.pets.setPrincipalPhoto(petId, fotoId)
+        if (r.isSuccessful) r.body() ?: SetPrincipalResponse(ok = true)
+        else throw Exception(backendMessage(r, "No se pudo cambiar la foto principal"))
     }
 
     suspend fun deletePet(petId: String): Result<Unit> = runCatching {
@@ -132,9 +168,15 @@ object PetRepository {
         if (r.isSuccessful) Unit else throw HttpException(r)
     }
 
-    suspend fun addPetPhotos(petId: String, fotos: List<MultipartBody.Part>): Result<List<FotoMascotaDto>> = runCatching {
-        val r = ApiServices.pets.addPetPhotos(petId, null, fotos)
-        if (r.isSuccessful) r.body() ?: emptyList() else throw HttpException(r)
+    suspend fun addPetPhotos(
+        petId: String,
+        fotos: List<MultipartBody.Part>,
+        fotoPrincipalIndex: Int? = null
+    ): Result<List<FotoMascotaDto>> = runCatching {
+        val idxBody = fotoPrincipalIndex?.toString()?.toRequestBody("text/plain".toMediaType())
+        val r = ApiServices.pets.addPetPhotos(petId, idxBody, fotos)
+        if (r.isSuccessful) r.body() ?: emptyList()
+        else throw Exception(backendMessage(r, "No se pudieron subir las fotos"))
     }
 
     suspend fun deletePetPhoto(petId: String, fotoId: Int): Result<Unit> = runCatching {
