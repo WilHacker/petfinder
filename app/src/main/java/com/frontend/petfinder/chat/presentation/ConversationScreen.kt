@@ -96,9 +96,19 @@ fun ConversationScreen(
         }
     }
 
+    // Al llegar/enviar un mensaje nuevo: animar hasta el último (acoplarse abajo).
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             runCatching { listState.animateScrollToItem(messages.lastIndex) }
+        }
+    }
+
+    // ¿La lista ya está pegada abajo? (para no arrancar al usuario si está leyendo historial)
+    val isAtBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull()
+            last == null || last.index >= info.totalItemsCount - 1
         }
     }
 
@@ -107,6 +117,10 @@ fun ConversationScreen(
     val isActive = estado == ChatEstado.ACEPTADA
 
     Scaffold(
+        // El teclado es un overlay (edge-to-edge, sin resize de ventana). imePadding()
+        // sube TODO el Scaffold por encima del teclado: la barra de input queda visible
+        // y el área de mensajes se encoge. La barra mantiene su navigationBarsPadding.
+        modifier = Modifier.imePadding(),
         containerColor = Color(0xFFF2F2F7),
         topBar = {
             TopAppBar(
@@ -189,7 +203,15 @@ fun ConversationScreen(
             }
         }
     ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            // Cuando el teclado abre/cierra, la ventana se redimensiona y cambia este alto.
+            // Reanclamos al último mensaje (solo si ya estábamos abajo) para que no salte.
+            val viewportHeight = maxHeight
+            LaunchedEffect(viewportHeight) {
+                if (messages.isNotEmpty() && isAtBottom) {
+                    runCatching { listState.scrollToItem(messages.lastIndex) }
+                }
+            }
             when {
                 loading -> CircularProgressIndicator(
                     modifier = Modifier.align(Alignment.Center),
@@ -298,6 +320,8 @@ private fun ChatInputBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // La ventana se redimensiona con el teclado (adjustResize), así que la
+                // barra ya sube sola. Solo descontamos la barra de navegación del sistema.
                 .navigationBarsPadding()
         ) {
             if (selectedPhotoUri != null) {
