@@ -113,6 +113,8 @@ fun rememberCustomMarkerIcon(context: Context, url: String?, borderColor: Color)
 fun MapHomeScreen(
     mapViewModel: MapViewModel,
     onNavigateToProfile: () -> Unit = {},
+    onNavigateToChat: () -> Unit = {},
+    unreadChat: Int = 0,
     isAdmin: Boolean = false
 ) {
     val context = LocalContext.current
@@ -265,22 +267,32 @@ fun MapHomeScreen(
         permissionLauncher.launch(requiredPermissions)
     }
 
+    // Restaura la última posición vista; si es el primer arranque, parte del default
     val cameraPositionState = rememberCameraPositionState {
-        position = CameraPosition.fromLatLngZoom(LatLng(-17.3895, -66.1568), 13f)
+        position = mapViewModel.savedCameraPosition
+            ?: CameraPosition.fromLatLngZoom(LatLng(-17.3895, -66.1568), 13f)
     }
 
-    // Centrar en la ubicación real del usuario al obtener permisos por primera vez
+    // Centra en la ubicación real del usuario SOLO la primera vez (primer arranque de la app).
+    // En visitas posteriores se respeta la posición donde el usuario dejó el mapa.
     LaunchedEffect(hasLocationPermission) {
         if (!hasLocationPermission) return@LaunchedEffect
+        if (mapViewModel.hasCenteredOnUser) return@LaunchedEffect
         runCatching {
             fusedLocationClient.lastLocation.addOnSuccessListener { location ->
                 if (location != null) {
                     val userLatLng = LatLng(location.latitude, location.longitude)
                     cameraPositionState.move(CameraUpdateFactory.newLatLngZoom(userLatLng, 15f))
                     isCenteredOnUser = true
+                    mapViewModel.markCenteredOnUser()
                 }
             }
         }
+    }
+
+    // Guarda la posición de cámara al abandonar el mapa, para restaurarla al volver
+    DisposableEffect(Unit) {
+        onDispose { mapViewModel.saveCameraPosition(cameraPositionState.position) }
     }
 
     // Cuando el usuario arrastra el mapa, el botón vuelve a su estado inactivo
@@ -547,14 +559,41 @@ fun MapHomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Izquierda: Perfil
-                        SmallFloatingActionButton(
-                            onClick = onNavigateToProfile,
-                            containerColor = Color.White,
-                            contentColor = PrimaryOrange,
-                            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                        // Izquierda: Perfil + Mensajes
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(Icons.Default.Person, contentDescription = "Mi perfil")
+                            SmallFloatingActionButton(
+                                onClick = onNavigateToProfile,
+                                containerColor = Color.White,
+                                contentColor = PrimaryOrange,
+                                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Person, contentDescription = "Mi perfil")
+                            }
+
+                            SmallFloatingActionButton(
+                                onClick = onNavigateToChat,
+                                containerColor = Color.White,
+                                contentColor = PrimaryOrange,
+                                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                            ) {
+                                BadgedBox(
+                                    badge = {
+                                        if (unreadChat > 0) {
+                                            Badge(
+                                                containerColor = Color(0xFFE53935),
+                                                contentColor = Color.White
+                                            ) {
+                                                Text(if (unreadChat > 99) "99+" else "$unreadChat")
+                                            }
+                                        }
+                                    }
+                                ) {
+                                    Icon(Icons.Default.ChatBubble, contentDescription = "Mensajes")
+                                }
+                            }
                         }
 
                         // Centro: chips de Perdidas + Admin
@@ -617,7 +656,7 @@ fun MapHomeScreen(
                             }
                         }
 
-                        // Derecha: Paseo + Ubicación
+                        // Derecha: Paseo
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -648,37 +687,6 @@ fun MapHomeScreen(
                                     )
                                 }
                             )
-
-                            SmallFloatingActionButton(
-                                onClick = {
-                                    if (hasLocationPermission) {
-                                        fusedLocationClient.lastLocation
-                                            .addOnSuccessListener { location ->
-                                                if (location != null) {
-                                                    cameraPositionState.move(
-                                                        CameraUpdateFactory.newLatLngZoom(
-                                                            LatLng(location.latitude, location.longitude), 16f
-                                                        )
-                                                    )
-                                                    isCenteredOnUser = true
-                                                } else {
-                                                    feedbackDialog = Triple(
-                                                        DialogType.INFO,
-                                                        "Ubicación no disponible",
-                                                        "Activa el GPS y vuelve a intentarlo."
-                                                    )
-                                                }
-                                            }
-                                    } else {
-                                        permissionLauncher.launch(requiredPermissions)
-                                    }
-                                },
-                                containerColor = if (isCenteredOnUser) PrimaryOrange else Color.White,
-                                contentColor = if (isCenteredOnUser) Color.White else PrimaryOrange,
-                                elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
-                            ) {
-                                Icon(Icons.Default.MyLocation, contentDescription = "Mi ubicación")
-                            }
                         }
                     }
 
@@ -766,6 +774,38 @@ fun MapHomeScreen(
                                 modifier = Modifier.graphicsLayer { rotationZ = -bearing }
                             )
                         }
+                    }
+
+                    // Mi ubicación — recentra el mapa en el usuario
+                    SmallFloatingActionButton(
+                        onClick = {
+                            if (hasLocationPermission) {
+                                fusedLocationClient.lastLocation
+                                    .addOnSuccessListener { location ->
+                                        if (location != null) {
+                                            cameraPositionState.move(
+                                                CameraUpdateFactory.newLatLngZoom(
+                                                    LatLng(location.latitude, location.longitude), 16f
+                                                )
+                                            )
+                                            isCenteredOnUser = true
+                                        } else {
+                                            feedbackDialog = Triple(
+                                                DialogType.INFO,
+                                                "Ubicación no disponible",
+                                                "Activa el GPS y vuelve a intentarlo."
+                                            )
+                                        }
+                                    }
+                            } else {
+                                permissionLauncher.launch(requiredPermissions)
+                            }
+                        },
+                        containerColor = if (isCenteredOnUser) PrimaryOrange else Color.White,
+                        contentColor = if (isCenteredOnUser) Color.White else PrimaryOrange,
+                        elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
+                    ) {
+                        Icon(Icons.Default.MyLocation, contentDescription = "Mi ubicación")
                     }
 
                     SmallFloatingActionButton(

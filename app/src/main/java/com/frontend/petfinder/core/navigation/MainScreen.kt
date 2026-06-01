@@ -34,7 +34,6 @@ import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.chat.data.ChatRepository
 import com.frontend.petfinder.chat.presentation.ChatListViewModel
 import com.frontend.petfinder.chat.presentation.ChatScreen
-import com.frontend.petfinder.chat.presentation.UnreadBadge
 import com.frontend.petfinder.core.network.ChatInviteEvent
 import com.frontend.petfinder.core.network.SocketManager
 import com.frontend.petfinder.core.theme.PrimaryOrange
@@ -90,7 +89,6 @@ fun MainScreen(rootNavController: NavHostController) {
             // Nuestra Barra Customizada
             CustomBottomNavigationBar(
                 currentRoute = currentRoute,
-                unreadChat = unreadTotal,
                 onNavigate = { route ->
                     if (route != NavRoutes.MapHome.route) sharedMapViewModel.cancelDrawing()
                     bottomNavController.navigate(route) {
@@ -112,6 +110,14 @@ fun MainScreen(rootNavController: NavHostController) {
                     MapHomeScreen(
                         mapViewModel = sharedMapViewModel,
                         onNavigateToProfile = { rootNavController.navigate(NavRoutes.Profile.route) },
+                        onNavigateToChat = {
+                            bottomNavController.navigate(NavRoutes.Chat.route) {
+                                popUpTo(bottomNavController.graph.findStartDestination().id) { saveState = true }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        unreadChat = unreadTotal,
                         isAdmin = isAdmin
                     )
                 }
@@ -220,7 +226,6 @@ private fun ChatInviteDialog(
 @Composable
 fun CustomBottomNavigationBar(
     currentRoute: String?,
-    unreadChat: Int = 0,
     onNavigate: (String) -> Unit
 ) {
     // ¡AQUÍ ESTÁ LA SOLUCIÓN AL BUG!
@@ -261,20 +266,6 @@ fun CustomBottomNavigationBar(
                         isSelected = currentRoute == NavRoutes.MapHome.route,
                         onClick = { onNavigate(NavRoutes.MapHome.route) }
                     )
-
-                    // Item Centro-izquierdo (Chat con badge de no leídos)
-                    Box(contentAlignment = Alignment.TopEnd) {
-                        BottomNavIcon(
-                            icon = Icons.Default.ChatBubble,
-                            isSelected = currentRoute == NavRoutes.Chat.route,
-                            onClick = { onNavigate(NavRoutes.Chat.route) }
-                        )
-                        if (unreadChat > 0) {
-                            Box(modifier = Modifier.padding(top = 6.dp, end = 6.dp)) {
-                                UnreadBadge(unreadChat)
-                            }
-                        }
-                    }
 
                     // Espacio vacío en el medio para abrazar al botón flotante
                     Spacer(modifier = Modifier.width(60.dp))

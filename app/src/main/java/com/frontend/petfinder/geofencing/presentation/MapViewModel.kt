@@ -15,6 +15,7 @@ import com.frontend.petfinder.geofencing.data.GeofencingRepository
 import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PetListItemDto
 import com.frontend.petfinder.pets.data.dto.TipoMascotaDto
+import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,17 @@ import kotlinx.coroutines.launch
 private const val TAG = "MapViewModel"
 
 class MapViewModel : ViewModel() {
+
+    /** Última posición de cámara del mapa — sobrevive al cambio de tab (no a la muerte del proceso). */
+    var savedCameraPosition: CameraPosition? = null
+        private set
+
+    /** True una vez que el mapa se centró en el usuario (solo en el primer arranque). */
+    var hasCenteredOnUser: Boolean = false
+        private set
+
+    fun saveCameraPosition(position: CameraPosition) { savedCameraPosition = position }
+    fun markCenteredOnUser() { hasCenteredOnUser = true }
 
     private val _snapshot = MutableStateFlow<MapSnapshotResponse?>(null)
     val snapshot: StateFlow<MapSnapshotResponse?> = _snapshot.asStateFlow()
