@@ -16,6 +16,8 @@ import androidx.navigation.navDeepLink
 import com.frontend.petfinder.PetFinderApp
 import com.frontend.petfinder.auth.presentation.LoginScreen
 import com.frontend.petfinder.auth.presentation.RegisterScreen
+import com.frontend.petfinder.chat.presentation.ChatScreen
+import com.frontend.petfinder.chat.presentation.SightingThreadScreen
 import com.frontend.petfinder.geofencing.presentation.ZoneDetailScreen
 import com.frontend.petfinder.pets.presentation.EditPetScreen
 import com.frontend.petfinder.pets.presentation.MedicalHistoryScreen
@@ -125,6 +127,16 @@ fun PetFinderNavGraph(navController: NavHostController) {
                             navController.getBackStackEntry(NavRoutes.Main.route)
                                 .savedStateHandle["focusMascotaId"] = petId
                             navController.popBackStack(NavRoutes.Main.route, inclusive = false)
+                        },
+                        onOpenThread = { avistamientoId, rescatistaUsuarioId ->
+                            navController.navigate(
+                                NavRoutes.SightingThread.createRoute(
+                                    avistamientoId = avistamientoId,
+                                    petName = "Mascota",
+                                    rescatistaName = "Rescatista",
+                                    rescatistaUsuarioId = rescatistaUsuarioId
+                                )
+                            )
                         }
                     )
                 }
@@ -173,6 +185,57 @@ fun PetFinderNavGraph(navController: NavHostController) {
                         ?.getInt(NavRoutes.ZoneDetail.ARG_ZONE_ID) ?: 0
                     ZoneDetailScreen(
                         zonaId = zonaId,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
+                }
+
+                // Chat — pantalla de dos pestañas
+                composable(NavRoutes.Chat.route) {
+                    ChatScreen(
+                        onOpenThread = { avistamientoId, rescatistaUsuarioId, petName, rescatistaName ->
+                            navController.navigate(
+                                NavRoutes.SightingThread.createRoute(
+                                    avistamientoId = avistamientoId,
+                                    petName = petName,
+                                    rescatistaName = rescatistaName,
+                                    rescatistaUsuarioId = rescatistaUsuarioId
+                                )
+                            )
+                        }
+                    )
+                }
+
+                // Hilo de conversación de avistamiento
+                composable(
+                    route = NavRoutes.SightingThread.route,
+                    arguments = listOf(
+                        navArgument(NavRoutes.SightingThread.ARG_AVISTAMIENTO_ID) {
+                            type = NavType.StringType
+                        },
+                        navArgument(NavRoutes.SightingThread.ARG_PET_NAME) {
+                            type = NavType.StringType; defaultValue = "Mascota"
+                        },
+                        navArgument(NavRoutes.SightingThread.ARG_RESCATISTA_NAME) {
+                            type = NavType.StringType; defaultValue = "Rescatista"
+                        },
+                        navArgument(NavRoutes.SightingThread.ARG_RESCATISTA_USER_ID) {
+                            type = NavType.StringType; defaultValue = ""
+                        }
+                    )
+                ) { backStackEntry ->
+                    val avistamientoId = backStackEntry.arguments
+                        ?.getString(NavRoutes.SightingThread.ARG_AVISTAMIENTO_ID) ?: ""
+                    val rescatistaUsuarioId = backStackEntry.arguments
+                        ?.getString(NavRoutes.SightingThread.ARG_RESCATISTA_USER_ID) ?: ""
+                    val petName = backStackEntry.arguments
+                        ?.getString(NavRoutes.SightingThread.ARG_PET_NAME) ?: "Mascota"
+                    val rescatistaName = backStackEntry.arguments
+                        ?.getString(NavRoutes.SightingThread.ARG_RESCATISTA_NAME) ?: "Rescatista"
+                    SightingThreadScreen(
+                        avistamientoId = avistamientoId,
+                        rescatistaUsuarioId = rescatistaUsuarioId,
+                        petName = petName,
+                        rescatistaName = rescatistaName,
                         onNavigateBack = { navController.popBackStack() }
                     )
                 }

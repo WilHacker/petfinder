@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.ShareLocation
@@ -25,6 +26,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.frontend.petfinder.PetFinderApp
+import com.frontend.petfinder.chat.presentation.ChatScreen
+import com.frontend.petfinder.chat.presentation.ChatViewModel
+import com.frontend.petfinder.chat.presentation.UnreadBadge
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.TextGray
 import com.frontend.petfinder.geofencing.presentation.MapHomeScreen
@@ -38,6 +42,8 @@ fun MainScreen(rootNavController: NavHostController) {
 
     // CEREBRO COMPARTIDO: Ambas pestañas verán exactamente los mismos datos
     val sharedMapViewModel: MapViewModel = viewModel()
+    val sharedChatViewModel: ChatViewModel = viewModel()
+    val unreadTotal by sharedChatViewModel.unreadTotal.collectAsStateWithLifecycle()
 
     val rol by PetFinderApp.sessionManager.getUserRole().collectAsStateWithLifecycle(initialValue = null)
     val isAdmin = rol == "admin"
@@ -69,6 +75,7 @@ fun MainScreen(rootNavController: NavHostController) {
             // Nuestra Barra Customizada
             CustomBottomNavigationBar(
                 currentRoute = currentRoute,
+                unreadChat = unreadTotal,
                 onNavigate = { route ->
                     if (route != NavRoutes.MapHome.route) sharedMapViewModel.cancelDrawing()
                     bottomNavController.navigate(route) {
@@ -115,6 +122,21 @@ fun MainScreen(rootNavController: NavHostController) {
                         }
                     )
                 }
+                composable(NavRoutes.Chat.route) {
+                    ChatScreen(
+                        viewModel = sharedChatViewModel,
+                        onOpenThread = { avistamientoId, rescatistaUsuarioId, petName, rescatistaName ->
+                            rootNavController.navigate(
+                                NavRoutes.SightingThread.createRoute(
+                                    avistamientoId = avistamientoId,
+                                    petName = petName,
+                                    rescatistaName = rescatistaName,
+                                    rescatistaUsuarioId = rescatistaUsuarioId
+                                )
+                            )
+                        }
+                    )
+                }
             }
         }
     }
@@ -123,6 +145,7 @@ fun MainScreen(rootNavController: NavHostController) {
 @Composable
 fun CustomBottomNavigationBar(
     currentRoute: String?,
+    unreadChat: Int = 0,
     onNavigate: (String) -> Unit
 ) {
     // ¡AQUÍ ESTÁ LA SOLUCIÓN AL BUG!
@@ -163,6 +186,20 @@ fun CustomBottomNavigationBar(
                         isSelected = currentRoute == NavRoutes.MapHome.route,
                         onClick = { onNavigate(NavRoutes.MapHome.route) }
                     )
+
+                    // Item Centro-izquierdo (Chat con badge de no leídos)
+                    Box(contentAlignment = Alignment.TopEnd) {
+                        BottomNavIcon(
+                            icon = Icons.Default.ChatBubble,
+                            isSelected = currentRoute == NavRoutes.Chat.route,
+                            onClick = { onNavigate(NavRoutes.Chat.route) }
+                        )
+                        if (unreadChat > 0) {
+                            Box(modifier = Modifier.padding(top = 6.dp, end = 6.dp)) {
+                                UnreadBadge(unreadChat)
+                            }
+                        }
+                    }
 
                     // Espacio vacío en el medio para abrazar al botón flotante
                     Spacer(modifier = Modifier.width(60.dp))

@@ -15,9 +15,12 @@ import com.frontend.petfinder.pets.data.PetRepository
 import com.frontend.petfinder.pets.data.dto.PetDetailDto
 import com.frontend.petfinder.pets.data.dto.PetReportDto
 import com.frontend.petfinder.pets.data.dto.PetScanDto
+import com.frontend.petfinder.core.network.SocketManager
 import com.frontend.petfinder.sightings.data.SightingDto
 import com.frontend.petfinder.sightings.data.SightingsRepository
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Dispatchers
+import retrofit2.HttpException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,13 +28,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import retrofit2.HttpException
 import java.io.File
 import java.io.FileOutputStream
 
 private const val TAG = "PetDetailViewModel"
 
 class PetDetailViewModel : ViewModel() {
+
+    init { observeSightingEvents() }
 
     sealed class DetailState {
         object Loading : DetailState()
@@ -88,10 +92,16 @@ class PetDetailViewModel : ViewModel() {
         }
     }
 
-    fun reportSighting(petId: String, lat: Double, lng: Double, mensajeRescatista: String? = null) {
+    fun reportSighting(
+        petId: String,
+        lat: Double,
+        lng: Double,
+        mensajeRescatista: String? = null,
+        foto: okhttp3.MultipartBody.Part? = null
+    ) {
         viewModelScope.launch {
             _sightingSubmitting.value = true
-            SightingsRepository.reportSighting(petId, lat, lng, mensajeRescatista).fold(
+            SightingsRepository.reportSighting(petId, lat, lng, mensajeRescatista, foto).fold(
                 onSuccess = {
                     _sightings.value = listOf(it) + _sightings.value
                     _sightingError.value = null
@@ -299,6 +309,27 @@ class PetDetailViewModel : ViewModel() {
     }
 
     fun clearRewardResult() { _rewardResult.value = null }
+
+
+    private fun observeSightingEvents() {
+        viewModelScope.launch {
+            SocketManager.sightingNewFlow.collect { event ->
+                val nuevo = SightingDto(
+                    avistamientoId = event.avistamientoId,
+                    mascotaId = "",
+                    mensajeRescatista = event.mensaje,
+                    fotoEvidenciaUrl = event.fotoUrl,
+                    fechaAvistamiento = event.fechaAvistamiento,
+                    lat = event.lat,
+                    lng = event.lng
+                )
+                _sightings.update { current ->
+                    if (current.any { it.avistamientoId == event.avistamientoId }) current
+                    else listOf(nuevo) + current
+                }
+            }
+        }
+    }
 
     private fun saveBase64ImageToGallery(context: Context, base64: String, fileName: String): Boolean {
         return try {

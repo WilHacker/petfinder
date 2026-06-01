@@ -36,6 +36,23 @@ object SocketManager {
     private val _petProfileFlow = MutableSharedFlow<PetProfileUpdate>(extraBufferCapacity = 4)
     val petProfileFlow = _petProfileFlow.asSharedFlow()
 
+    private val _sightingNewFlow = MutableSharedFlow<SightingNewEvent>(extraBufferCapacity = 8)
+    val sightingNewFlow = _sightingNewFlow.asSharedFlow()
+
+    private val _sightingCommentFlow = MutableSharedFlow<SightingCommentEvent>(extraBufferCapacity = 8)
+    val sightingCommentFlow = _sightingCommentFlow.asSharedFlow()
+
+    // Alerta comunitaria activada — broadcast a todos, buffer mayor para no perderla
+    private val _communityAlertFlow = MutableSharedFlow<CommunityAlertActivatedEvent>(extraBufferCapacity = 8)
+    val communityAlertFlow = _communityAlertFlow.asSharedFlow()
+
+    // Pins del mapa público — broadcast: agregar/quitar mascotas perdidas en vivo
+    private val _lostPetAddedFlow = MutableSharedFlow<MapLostPetAddedEvent>(extraBufferCapacity = 16)
+    val lostPetAddedFlow = _lostPetAddedFlow.asSharedFlow()
+
+    private val _lostPetRemovedFlow = MutableSharedFlow<MapLostPetRemovedEvent>(extraBufferCapacity = 16)
+    val lostPetRemovedFlow = _lostPetRemovedFlow.asSharedFlow()
+
     fun connect(jwtToken: String, context: Context) {
         disconnectClean()
 
@@ -104,6 +121,56 @@ object SocketManager {
                 }
             }
 
+            socket?.on("sighting:new") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    val event = gson.fromJson(data.toString(), SightingNewEvent::class.java)
+                    _sightingNewFlow.tryEmit(event)
+                }.onFailure { e ->
+                    Log.e("SocketManager", "sighting:new parse error: ${e.message}")
+                }
+            }
+
+            socket?.on("sighting:comment-new") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    val event = gson.fromJson(data.toString(), SightingCommentEvent::class.java)
+                    _sightingCommentFlow.tryEmit(event)
+                }.onFailure { e ->
+                    Log.e("SocketManager", "sighting:comment-new parse error: ${e.message}")
+                }
+            }
+
+            socket?.on("community:alert-activated") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    val event = gson.fromJson(data.toString(), CommunityAlertActivatedEvent::class.java)
+                    _communityAlertFlow.tryEmit(event)
+                }.onFailure { e ->
+                    Log.e("SocketManager", "community:alert-activated parse error: ${e.message}")
+                }
+            }
+
+            socket?.on("map:lost-pet-added") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    val event = gson.fromJson(data.toString(), MapLostPetAddedEvent::class.java)
+                    _lostPetAddedFlow.tryEmit(event)
+                }.onFailure { e ->
+                    Log.e("SocketManager", "map:lost-pet-added parse error: ${e.message}")
+                }
+            }
+
+            socket?.on("map:lost-pet-removed") { args ->
+                runCatching {
+                    val data = args[0] as JSONObject
+                    val event = gson.fromJson(data.toString(), MapLostPetRemovedEvent::class.java)
+                    _lostPetRemovedFlow.tryEmit(event)
+                }.onFailure { e ->
+                    Log.e("SocketManager", "map:lost-pet-removed parse error: ${e.message}")
+                }
+            }
+
             socket?.connect()
 
         } catch (e: Exception) {
@@ -127,6 +194,11 @@ object SocketManager {
             s.off("pet:exited-zone")
             s.off("owner:profile-updated")
             s.off("pet:profile-updated")
+            s.off("sighting:new")
+            s.off("sighting:comment-new")
+            s.off("community:alert-activated")
+            s.off("map:lost-pet-added")
+            s.off("map:lost-pet-removed")
             s.disconnect()
             socket = null
             Log.d("SocketManager", "Socket desconectado y listeners eliminados")

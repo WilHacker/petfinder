@@ -44,4 +44,30 @@ sealed class NavRoutes(val route: String) {
         fun createRoute(zonaId: Int) = "zone_detail/$zonaId"
         const val ARG_ZONE_ID = "zonaId"
     }
+
+    // Chat — pantalla de dos pestañas (bottom nav)
+    object Chat : NavRoutes("chat")
+
+    // Hilo de conversación de un avistamiento
+    // petName y rescatistaName van como query params para evitar problemas con caracteres especiales
+    object SightingThread : NavRoutes(
+        "sighting_thread/{avistamientoId}?petName={petName}&rescatistaName={rescatistaName}&rescatistaUsuarioId={rescatistaUsuarioId}"
+    ) {
+        fun createRoute(
+            avistamientoId: String,
+            petName: String,
+            rescatistaName: String,
+            rescatistaUsuarioId: String = ""
+        ): String {
+            val p = java.net.URLEncoder.encode(petName, "UTF-8")
+            val r = java.net.URLEncoder.encode(rescatistaName, "UTF-8")
+            val u = java.net.URLEncoder.encode(rescatistaUsuarioId, "UTF-8")
+            return "sighting_thread/$avistamientoId?petName=$p&rescatistaName=$r&rescatistaUsuarioId=$u"
+        }
+
+        const val ARG_AVISTAMIENTO_ID = "avistamientoId"
+        const val ARG_PET_NAME = "petName"
+        const val ARG_RESCATISTA_NAME = "rescatistaName"
+        const val ARG_RESCATISTA_USER_ID = "rescatistaUsuarioId"
+    }
 }

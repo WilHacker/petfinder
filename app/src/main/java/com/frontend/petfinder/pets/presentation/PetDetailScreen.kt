@@ -3,6 +3,8 @@ package com.frontend.petfinder.pets.presentation
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,11 +41,13 @@ import com.frontend.petfinder.core.presentation.components.PetFinderDialog
 import com.frontend.petfinder.core.presentation.components.PetFinderErrorBanner
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.PrimaryOrangeLight
+import com.frontend.petfinder.core.theme.TextGray
 import com.frontend.petfinder.pets.data.dto.PetDetailDto
 import com.frontend.petfinder.pets.data.dto.PetReportDto
 import com.frontend.petfinder.pets.data.dto.PetScanDto
 import com.frontend.petfinder.pets.data.dto.PropietarioDetailDto
 import com.frontend.petfinder.pets.presentation.components.Base64Image
+import com.frontend.petfinder.sightings.data.SightingDto
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.maps.CameraUpdateFactory
@@ -107,7 +111,8 @@ fun PetDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToMedical: () -> Unit = {},
     onNavigateToEdit: () -> Unit = {},
-    onViewOnMap: (mascotaId: String) -> Unit = {}
+    onViewOnMap: (mascotaId: String) -> Unit = {},
+    onOpenThread: (avistamientoId: String, rescatistaUsuarioId: String) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -160,6 +165,7 @@ fun PetDetailScreen(
             viewModel.clearSightingError()
         }
     }
+
 
     LaunchedEffect(qrDownloadResult) {
         qrDownloadResult?.let {
@@ -771,17 +777,24 @@ fun PetDetailScreen(
                 onViewOnMap = { onViewOnMap(mascotaId) },
                 onAddOwner = { activeModal = PetDetailModal.AddOwnerSheet },
                 onRemoveOwner = { personaId -> viewModel.removeOwner(mascotaId, personaId) },
-                onReportSighting = { desc ->
+                onReportSighting = { desc, foto ->
                     scope.launch {
                         val fusedClient = LocationServices.getFusedLocationProviderClient(context)
                         val cts = CancellationTokenSource()
                         val loc = try {
                             fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
                         } catch (_: Exception) { null }
-                        viewModel.reportSighting(mascotaId, loc?.latitude ?: 0.0, loc?.longitude ?: 0.0, desc)
+                        viewModel.reportSighting(
+                            petId = mascotaId,
+                            lat = loc?.latitude ?: 0.0,
+                            lng = loc?.longitude ?: 0.0,
+                            mensajeRescatista = desc.takeIf { it.isNotBlank() },
+                            foto = foto
+                        )
                     }
                 },
                 onSendThanks = { id, msg -> viewModel.sendThanks(id, msg) },
+                onOpenThread = { avistamientoId -> onOpenThread(avistamientoId, "") },
                 onCommunityAlert = { activeModal = PetDetailModal.CommunityAlertSheet },
                 onUpdateReward = { activeModal = PetDetailModal.RewardSheet },
                 onNavigateToEdit = onNavigateToEdit
@@ -902,7 +915,7 @@ private fun PetDetailContent(
     statusChanging: Boolean,
     scans: List<PetScanDto>,
     reports: List<PetReportDto>,
-    sightings: List<com.frontend.petfinder.sightings.data.SightingDto> = emptyList(),
+    sightings: List<SightingDto> = emptyList(),
     sightingSubmitting: Boolean = false,
     onBack: () -> Unit,
     onShowStatusSheet: () -> Unit,
@@ -912,12 +925,14 @@ private fun PetDetailContent(
     onViewOnMap: () -> Unit = {},
     onAddOwner: () -> Unit = {},
     onRemoveOwner: (String) -> Unit = {},
-    onReportSighting: (String) -> Unit = {},
+    onReportSighting: (desc: String, foto: okhttp3.MultipartBody.Part?) -> Unit = { _, _ -> },
     onSendThanks: (String, String?) -> Unit = { _, _ -> },
+    onOpenThread: (avistamientoId: String) -> Unit = {},
     onCommunityAlert: () -> Unit = {},
     onUpdateReward: () -> Unit = {},
     onNavigateToEdit: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
     val imageUrl = pet.fotos?.find { it.esPrincipal }?.fotoUrl
         ?: pet.fotos?.firstOrNull()?.fotoUrl
@@ -1275,14 +1290,69 @@ private fun PetDetailContent(
 
             // ── Sección: Avistamientos ───────────────────────────────────
             if (estado == "extraviada" || sightings.isNotEmpty()) {
+                val sightingScope = rememberCoroutineScope()
                 var sightingText by remember { mutableStateOf("") }
+                var sightingPhotoUri by remember { mutableStateOf<android.net.Uri?>(null) }
+
+                val sightingPhotoLauncher = rememberLauncherForActivityResult(
+                    androidx.activity.result.contract.ActivityResultContracts.GetContent()
+                ) { uri -> sightingPhotoUri = uri }
+
                 PetSectionHeader("Avistamientos de la comunidad")
+
+                // Preview de foto seleccionada
+                if (sightingPhotoUri != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFFF8F8F8))
+                            .padding(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        AsyncImage(
+                            model = sightingPhotoUri,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Text(
+                            "Foto adjunta — el GPS se captura al enviar",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = PrimaryOrange,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { sightingPhotoUri = null },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(Icons.Default.Close, null, tint = TextGray, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Botón adjuntar foto
+                    IconButton(
+                        onClick = { sightingPhotoLauncher.launch("image/*") },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (sightingPhotoUri != null) PrimaryOrangeLight else Color(0xFFF0F0F0))
+                    ) {
+                        Icon(
+                            Icons.Default.AddPhotoAlternate,
+                            contentDescription = "Adjuntar foto",
+                            tint = if (sightingPhotoUri != null) PrimaryOrange else TextGray,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     OutlinedTextField(
                         value = sightingText,
                         onValueChange = { sightingText = it },
@@ -1293,20 +1363,39 @@ private fun PetDetailContent(
                         textStyle = MaterialTheme.typography.bodySmall
                     )
                     IconButton(
-                        onClick = { if (sightingText.isNotBlank()) { onReportSighting(sightingText); sightingText = "" } },
-                        enabled = sightingText.isNotBlank() && !sightingSubmitting
+                        onClick = {
+                            if (sightingText.isNotBlank() || sightingPhotoUri != null) {
+                                val capturedText = sightingText
+                                val capturedUri = sightingPhotoUri
+                                sightingText = ""
+                                sightingPhotoUri = null
+                                sightingScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                                    val fotoPart = capturedUri?.let { uri ->
+                                        runCatching {
+                                            com.frontend.petfinder.core.utils.ImageUtils
+                                                .processImagesForUpload(context, listOf(uri), "foto")
+                                                .firstOrNull()
+                                        }.getOrNull()
+                                    }
+                                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                                        onReportSighting(capturedText, fotoPart)
+                                    }
+                                }
+                            }
+                        },
+                        enabled = (sightingText.isNotBlank() || sightingPhotoUri != null) && !sightingSubmitting
                     ) {
-                        if (sightingSubmitting) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = PrimaryOrange)
-                        } else {
-                            Icon(Icons.Default.Send, null, tint = PrimaryOrange)
-                        }
+                        if (sightingSubmitting) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = PrimaryOrange)
+                        else Icon(Icons.Default.Send, null, tint = PrimaryOrange)
                     }
                 }
                 Spacer(Modifier.height(12.dp))
 
                 sightings.take(5).forEach { sighting ->
-                    SightingRow(sighting = sighting, onThanks = { onSendThanks(sighting.avistamientoId, null) })
+                    SightingCard(
+                        sighting = sighting,
+                        onOpenThread = { onOpenThread(sighting.avistamientoId) }
+                    )
                     Spacer(Modifier.height(8.dp))
                 }
                 Spacer(Modifier.height(8.dp))
@@ -1598,9 +1687,9 @@ private fun ReportRow(report: PetReportDto) {
 }
 
 @Composable
-private fun SightingRow(
-    sighting: com.frontend.petfinder.sightings.data.SightingDto,
-    onThanks: () -> Unit
+private fun SightingCard(
+    sighting: SightingDto,
+    onOpenThread: () -> Unit
 ) {
     val fechaLegible = remember(sighting.fechaAvistamiento) {
         try {
@@ -1612,6 +1701,7 @@ private fun SightingRow(
 
     Surface(shape = RoundedCornerShape(14.dp), color = Color.White, shadowElevation = 2.dp) {
         Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+            // Header: icono + fecha
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1623,54 +1713,66 @@ private fun SightingRow(
                     Icon(Icons.Default.Visibility, null, tint = PrimaryOrange, modifier = Modifier.size(16.dp))
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "Anónimo",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Text("Avistamiento reportado", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                     Text(fechaLegible, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
+            // Mensaje del rescatista
             sighting.mensajeRescatista?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(8.dp))
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground)
             }
 
+            // Foto de evidencia
             if (sighting.fotoEvidenciaUrl != null) {
                 Spacer(Modifier.height(8.dp))
                 AsyncImage(
                     model = sighting.fotoEvidenciaUrl,
                     contentDescription = "Foto del avistamiento",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(140.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                    modifier = Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(10.dp))
                 )
             }
 
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    onClick = onThanks,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            // Coordenadas
+            if (sighting.lat != null && sighting.lng != null) {
+                Spacer(Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(Icons.Default.FavoriteBorder, null, modifier = Modifier.size(14.dp), tint = PrimaryOrange)
-                    Spacer(Modifier.width(4.dp))
+                    Icon(Icons.Default.LocationOn, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(12.dp))
                     Text(
-                        "Gracias",
+                        "%.4f, %.4f".format(sighting.lat, sighting.lng),
                         style = MaterialTheme.typography.labelSmall,
-                        color = PrimaryOrange
+                        color = Color(0xFF4CAF50)
                     )
                 }
+            }
+
+            // Botón Chat privado
+            Spacer(Modifier.height(10.dp))
+            OutlinedButton(
+                onClick = onOpenThread,
+                modifier = Modifier.fillMaxWidth().height(38.dp),
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, PrimaryOrange),
+                contentPadding = PaddingValues(horizontal = 12.dp)
+            ) {
+                Icon(Icons.Default.Chat, null, tint = PrimaryOrange, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    "Chat privado",
+                    color = PrimaryOrange,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
         }
     }
 }
+
 
 @Composable
 private fun StatusOption(

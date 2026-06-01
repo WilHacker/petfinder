@@ -39,7 +39,14 @@ data class DesaparecidaDto(
     val fotoUrl: String?,
     val ubicacion: PointDto,
     val fechaPerdida: String? = null,
-    val recompensa: Double? = null
+    val recompensa: Double? = null,
+    val alertaComunidad: AlertaComunidadDto? = null
+)
+
+// Estado de la alerta comunitaria de una mascota perdida (botón "Pedir ayuda")
+data class AlertaComunidadDto(
+    @SerializedName("activa") val activa: Boolean = false,
+    @SerializedName("expiraEl") val expiraEl: String? = null
 )
 
 data class MyPetMarkerDto(
@@ -67,7 +74,8 @@ data class LostPetMarkerDto(
     @SerializedName("fotoUrl") val fotoUrl: String?,
     @SerializedName("ubicacion") val ubicacion: PointDto,
     @SerializedName("fechaPerdida") val fechaPerdida: String? = null,
-    @SerializedName("recompensa") val recompensa: Double? = null
+    @SerializedName("recompensa") val recompensa: Double? = null,
+    @SerializedName("alertaComunidad") val alertaComunidad: AlertaComunidadDto? = null
 )
 
 data class MapSnapshotResponse(

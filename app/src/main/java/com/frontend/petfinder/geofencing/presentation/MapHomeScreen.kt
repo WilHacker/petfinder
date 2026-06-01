@@ -19,6 +19,9 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -132,6 +135,7 @@ fun MapHomeScreen(
     val tiposMascota by mapViewModel.tiposMascota.collectAsStateWithLifecycle()
     val speciesFilter by mapViewModel.speciesFilter.collectAsStateWithLifecycle()
     val focusMascotaId by mapViewModel.focusMascotaId.collectAsStateWithLifecycle()
+    val activeAlerts by mapViewModel.activeAlerts.collectAsStateWithLifecycle()
 
     // IDs de mis propias mascotas extraviadas (borde rojo en el marcador)
     val misExtraviadas = remember(snapshot) {
@@ -196,6 +200,20 @@ fun MapHomeScreen(
     var feedbackDialog by remember { mutableStateOf<Triple<DialogType, String, String>?>(null) }
     var isCenteredOnUser by remember { mutableStateOf(false) }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    // Refresca el mapa cada vez que la pantalla vuelve a primer plano. Mitiga la falta de
+    // eventos en vivo cross-usuario (status-changed es room-scoped en el backend): al volver
+    // a la app, las mascotas extraviadas/recuperadas se reflejan sin reiniciar.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                mapViewModel.cargarDatosDelMapa()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // --- MANEJO DE ERRORES ---
     LaunchedEffect(trackingError) {
@@ -309,6 +327,56 @@ fun MapHomeScreen(
                 mapViewModel.handleMapClick(latLng)
             }
         ) {
+                // 0. ALERTAS COMUNITARIAS ACTIVAS — "se pidió ayuda aquí".
+                //    Siempre visibles (no dependen del botón Perdidas ni del filtro de especie).
+                if (activeAlerts.isNotEmpty()) {
+                    val alertPetsDrawn = filteredMyPets.keys +
+                        if (showLostPets) (filteredCommunitySnapshot.keys + filteredLostPets.map { it.mascotaId }.toSet())
+                        else emptySet()
+
+                    activeAlerts.forEach { (mascotaId, alert) ->
+                        key("alert_$mascotaId") {
+                            val center = LatLng(alert.lat, alert.lng)
+
+                            // Radio de búsqueda (solo si lo conocemos vía socket en vivo)
+                            alert.radioMetros?.let { r ->
+                                Circle(
+                                    center = center,
+                                    radius = r,
+                                    fillColor = Color(0x1AE53935),
+                                    strokeColor = Color(0xFFE53935),
+                                    strokeWidth = 4f
+                                )
+                            }
+
+                            // Halo de énfasis bajo el pin
+                            Circle(
+                                center = center,
+                                radius = 45.0,
+                                fillColor = Color(0x33E53935),
+                                strokeColor = Color(0xFFE53935),
+                                strokeWidth = 3f
+                            )
+
+                            // Pin propio solo si ninguna otra capa ya dibuja a esta mascota
+                            if (mascotaId !in alertPetsDrawn) {
+                                val foto = alert.fotoUrl
+                                    ?: snapshot?.desaparecidas?.find { it.mascotaId == mascotaId }?.fotoUrl
+                                    ?: lostPets.find { it.mascotaId == mascotaId }?.fotoUrl
+                                val alertIcon = rememberCustomMarkerIcon(context, foto, Color(0xFFE53935))
+                                Marker(
+                                    state = MarkerState(position = center),
+                                    title = "🆘 Ayuda solicitada",
+                                    snippet = "La comunidad está buscando a esta mascota",
+                                    icon = alertIcon ?: BitmapDescriptorFactory.defaultMarker(
+                                        BitmapDescriptorFactory.HUE_RED
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
                 snapshot?.let { data ->
 
                     // 1. MARCADORES DE CO-PROPIETARIOS (Humanos)

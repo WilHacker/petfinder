@@ -71,6 +71,84 @@ class MapViewModel : ViewModel() {
         _showLostPets.value = !_showLostPets.value
     }
 
+    // Alerta comunitaria "Pedir ayuda" — mascotas con búsqueda activa, visibles para todos
+    data class ActiveCommunityAlert(
+        val mascotaId: String,
+        val lat: Double,
+        val lng: Double,
+        val radioMetros: Double?, // null cuando proviene del snapshot (no incluye radio)
+        val expiraEl: String?,
+        val fotoUrl: String? = null // se completa al sembrar desde perdidas; null si solo vino por socket
+    )
+
+    private val _activeAlerts = MutableStateFlow<Map<String, ActiveCommunityAlert>>(emptyMap())
+    val activeAlerts: StateFlow<Map<String, ActiveCommunityAlert>> = _activeAlerts.asStateFlow()
+
+    // expiraEl viene ISO-8601 (ej. "2026-06-02T02:08:51Z"). Sin fecha → la tratamos como activa.
+    private fun isAlertActive(expiraEl: String?): Boolean {
+        if (expiraEl == null) return true
+        return runCatching {
+            java.time.Instant.parse(expiraEl).isAfter(java.time.Instant.now())
+        }.getOrDefault(true)
+    }
+
+    // Reconstruye la capa de alertas. IMPORTANTE: las alertas son de alta prioridad y
+    // deben verse sin importar el filtro de especie de la UI. Por eso se siembran desde
+    // perdidas SIN filtrar (no desde _lostPets, que viene filtrado por el backend).
+    // Preserva el radio de cualquier alerta recibida en vivo por socket.
+    private suspend fun rebuildActiveAlertsFromData() {
+        // Cuando no hay filtro, _lostPets ya es la lista completa; si hay filtro, pedimos sin filtrar.
+        val perdidasSinFiltrar = if (_speciesFilter.value == null) {
+            _lostPets.value
+        } else {
+            GeofencingRepository.getPublicLostPets(null).getOrDefault(_lostPets.value)
+        }
+
+        val seeded = mutableMapOf<String, ActiveCommunityAlert>()
+        _snapshot.value?.desaparecidas?.forEach { d ->
+            val a = d.alertaComunidad
+            if (a?.activa == true && isAlertActive(a.expiraEl)) {
+                seeded[d.mascotaId] = ActiveCommunityAlert(
+                    d.mascotaId, d.ubicacion.lat, d.ubicacion.lng, null, a.expiraEl, d.fotoUrl
+                )
+            }
+        }
+        perdidasSinFiltrar.forEach { l ->
+            val a = l.alertaComunidad
+            if (a?.activa == true && isAlertActive(a.expiraEl) && l.mascotaId !in seeded) {
+                seeded[l.mascotaId] = ActiveCommunityAlert(
+                    l.mascotaId, l.ubicacion.lat, l.ubicacion.lng, null, a.expiraEl, l.fotoUrl
+                )
+            }
+        }
+
+        // Mascotas que el backend reporta EXPLÍCITAMENTE con alerta inactiva (recuperada o
+        // alerta apagada). Se quitan del mapa aunque sigan dentro de la ventana de 24h.
+        val explicitamenteInactivas = buildSet {
+            _snapshot.value?.desaparecidas?.forEach { d ->
+                if (d.alertaComunidad?.activa == false) add(d.mascotaId)
+            }
+            perdidasSinFiltrar.forEach { l ->
+                if (l.alertaComunidad?.activa == false) add(l.mascotaId)
+            }
+        }
+
+        _activeAlerts.update { live ->
+            val merged = seeded.mapValues { (id, seed) ->
+                val radioVivo = live[id]?.radioMetros
+                if (radioVivo != null) seed.copy(radioMetros = radioVivo) else seed
+            }.toMutableMap()
+            // Conserva alertas en vivo que aún no aparecen en perdidas (carrera socket→datos),
+            // salvo que el backend las marque explícitamente como inactivas.
+            live.forEach { (id, alert) ->
+                if (id !in merged && id !in explicitamenteInactivas && isAlertActive(alert.expiraEl)) {
+                    merged[id] = alert
+                }
+            }
+            merged
+        }
+    }
+
     private val _tiposMascota = MutableStateFlow<List<TipoMascotaDto>>(emptyList())
     val tiposMascota: StateFlow<List<TipoMascotaDto>> = _tiposMascota.asStateFlow()
 
@@ -122,7 +200,8 @@ class MapViewModel : ViewModel() {
 
         viewModelScope.launch {
             SocketManager.petStatusFlow.collect { update ->
-                if (_snapshot.value == null) _snapshot.first { it != null }
+                // Solo afecta a MIS mascotas (evento room-scoped). El mapa público se actualiza
+                // por separado con map:lost-pet-added / map:lost-pet-removed (broadcast).
                 _snapshot.update { current ->
                     current?.copy(
                         misMascotas = current.misMascotas.map { pet ->
@@ -159,6 +238,51 @@ class MapViewModel : ViewModel() {
                 }
             }
         }
+        viewModelScope.launch {
+            SocketManager.communityAlertFlow.collect { ev ->
+                // Pinta la alerta al instante (con su radio). No recargamos: el backend ya
+                // envía map:lost-pet-added por separado y la capa de alertas es always-on.
+                _activeAlerts.update { current ->
+                    val previa = current[ev.mascotaId]
+                    current + (ev.mascotaId to ActiveCommunityAlert(
+                        ev.mascotaId, ev.lat, ev.lng, ev.radioMetros, ev.expiraEl,
+                        fotoUrl = previa?.fotoUrl // conserva foto si ya la teníamos
+                    ))
+                }
+            }
+        }
+
+        // map:lost-pet-added — broadcast: agrega el pin sin llamar a ningún endpoint
+        viewModelScope.launch {
+            SocketManager.lostPetAddedFlow.collect { ev ->
+                val marker = LostPetMarkerDto(
+                    mascotaId = ev.mascotaId,
+                    nombre = ev.nombre,
+                    tipo = ev.tipo ?: "",
+                    fotoUrl = ev.fotoUrl,
+                    ubicacion = PointDto(ev.lat, ev.lng),
+                    fechaPerdida = ev.fechaPerdida,
+                    recompensa = ev.recompensa,
+                    alertaComunidad = null
+                )
+                _lostPets.update { current ->
+                    if (current.any { it.mascotaId == ev.mascotaId }) current
+                    else current + marker
+                }
+            }
+        }
+
+        // map:lost-pet-removed — broadcast: quita el pin (recuperada) por mascotaId
+        viewModelScope.launch {
+            SocketManager.lostPetRemovedFlow.collect { ev ->
+                _lostPets.update { it.filterNot { p -> p.mascotaId == ev.mascotaId } }
+                _snapshot.update { s ->
+                    s?.copy(desaparecidas = s.desaparecidas.filterNot { it.mascotaId == ev.mascotaId })
+                }
+                _activeAlerts.update { it - ev.mascotaId }
+            }
+        }
+
         viewModelScope.launch {
             SocketManager.zoneExitFlow.collect { event ->
                 val petName = _pets.value.find { it.mascotaId == event.mascotaId }?.nombre
@@ -202,6 +326,8 @@ class MapViewModel : ViewModel() {
                 onSuccess = { _lostPets.value = it },
                 onFailure = { e -> Log.w(TAG, "getPublicLostPets: ${e.message}") }
             )
+
+            rebuildActiveAlertsFromData()
         }
     }
 
