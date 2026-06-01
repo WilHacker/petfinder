@@ -602,7 +602,7 @@ private fun PublicCardContent(
                                     val loc = try {
                                         fusedClient.getCurrentLocation(Priority.PRIORITY_BALANCED_POWER_ACCURACY, cts.token).await()
                                     } catch (_: Exception) { null }
-                                    gpsStatus = if (loc != null) "✓ GPS obtenido (${String.format("%.4f", loc.latitude)}, ${String.format("%.4f", loc.longitude)})" else "Sin GPS — se enviará sin coordenadas"
+                                    gpsStatus = if (loc != null) "✓ Ubicación lista" else "Sin ubicación — se enviará igual"
 
                                     val fotoPart = selectedPhotoUri?.let { uri ->
                                         uriToMultipart(context, uri)

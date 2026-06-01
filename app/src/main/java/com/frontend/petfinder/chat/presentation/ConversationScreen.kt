@@ -36,6 +36,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.frontend.petfinder.chat.data.ChatEstado
 import com.frontend.petfinder.chat.data.ChatMessageDto
+import com.frontend.petfinder.core.presentation.components.DialogType
+import com.frontend.petfinder.core.presentation.components.PetFinderDialog
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.TextDark
 import com.frontend.petfinder.core.theme.TextGray
@@ -233,19 +235,14 @@ fun ConversationScreen(
             }
 
             error?.let { msg ->
-                Snackbar(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp),
-                    action = {
-                        TextButton(onClick = { viewModel.clearError() }) {
-                            Text("OK", color = PrimaryOrange)
-                        }
-                    },
-                    containerColor = Color(0xFF323232)
-                ) {
-                    Text(msg, color = Color.White, fontSize = 13.sp)
-                }
+                PetFinderDialog(
+                    type = DialogType.DANGER,
+                    title = "No se pudo completar",
+                    message = msg,
+                    confirmText = "Entendido",
+                    onConfirm = { viewModel.clearError() },
+                    onDismiss = { viewModel.clearError() }
+                )
             }
         }
     }

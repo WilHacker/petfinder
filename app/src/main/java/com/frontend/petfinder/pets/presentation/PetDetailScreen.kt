@@ -143,13 +143,6 @@ fun PetDetailScreen(
     LaunchedEffect(Unit) {
         viewModel.chatStarted.collect { conversacionId -> onOpenConversation(conversacionId) }
     }
-    LaunchedEffect(chatInfo) {
-        chatInfo?.let {
-            android.widget.Toast.makeText(context, it, android.widget.Toast.LENGTH_SHORT).show()
-            viewModel.clearChatInfo()
-        }
-    }
-
     var activeModal by remember { mutableStateOf<PetDetailModal>(PetDetailModal.None) }
     var locationSuccess by remember { mutableStateOf(false) }
     var showMapPicker by remember { mutableStateOf(false) }
@@ -157,23 +150,31 @@ fun PetDetailScreen(
 
     LaunchedEffect(mascotaId) { viewModel.load(mascotaId) }
 
+    // Info del chat (p. ej. "Reabriste la conversación") → modal amigable, no Toast.
+    LaunchedEffect(chatInfo) {
+        chatInfo?.let {
+            feedbackDialog = Triple(DialogType.INFO, "Chat", it)
+            viewModel.clearChatInfo()
+        }
+    }
+
     LaunchedEffect(locationError) {
         locationError?.let {
-            feedbackDialog = Triple(DialogType.DANGER, "Error de ubicación", it)
+            feedbackDialog = Triple(DialogType.DANGER, "No se pudo guardar la ubicación", it)
             viewModel.clearLocationError()
         }
     }
 
     LaunchedEffect(ownerError) {
         ownerError?.let {
-            feedbackDialog = Triple(DialogType.DANGER, "Error", it)
+            feedbackDialog = Triple(DialogType.DANGER, "No se pudo actualizar los cuidadores", it)
             viewModel.clearOwnerError()
         }
     }
 
     LaunchedEffect(sightingError) {
         sightingError?.let {
-            feedbackDialog = Triple(DialogType.DANGER, "Error", it)
+            feedbackDialog = Triple(DialogType.DANGER, "No se pudo reportar el avistamiento", it)
             viewModel.clearSightingError()
         }
     }
@@ -184,7 +185,7 @@ fun PetDetailScreen(
             val isError = it.startsWith("No se pudo")
             feedbackDialog = Triple(
                 if (isError) DialogType.DANGER else DialogType.SUCCESS,
-                if (isError) "Error" else "Listo",
+                if (isError) "No se pudo descargar el QR" else "Listo",
                 it
             )
             viewModel.clearQrDownloadResult()
@@ -203,7 +204,7 @@ fun PetDetailScreen(
             val isError = it.startsWith("No se pudo") || it.startsWith("Sin permiso") || it.startsWith("La mascota")
             feedbackDialog = Triple(
                 if (isError) DialogType.DANGER else DialogType.SUCCESS,
-                if (isError) "Error" else "Recompensa actualizada",
+                if (isError) "No se pudo actualizar la recompensa" else "Recompensa actualizada",
                 it
             )
             viewModel.clearRewardResult()
@@ -884,12 +885,18 @@ fun PetDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        "%.5f, %.5f".format(target.latitude, target.longitude),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(Icons.Default.Place, null, tint = PrimaryOrange, modifier = Modifier.size(16.dp))
+                        Text(
+                            "Pin listo en este punto",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                     Spacer(Modifier.height(16.dp))
                     Button(
                         onClick = {
@@ -1640,7 +1647,7 @@ private fun ScanRow(scan: PetScanDto) {
                 Text(fechaLegible, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                 if (hasCoords) {
                     Text(
-                        "%.4f, %.4f — toca para ver en mapa".format(scan.lat, scan.lng),
+                        "Ver ubicación en el mapa",
                         style = MaterialTheme.typography.labelSmall,
                         color = PrimaryOrange
                     )
@@ -1709,6 +1716,7 @@ private fun SightingCard(
     sighting: SightingDto,
     onStartChat: () -> Unit
 ) {
+    val context = LocalContext.current
     val fechaLegible = remember(sighting.fechaAvistamiento) {
         try {
             val input = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault())
@@ -1753,19 +1761,30 @@ private fun SightingCard(
                 )
             }
 
-            // Coordenadas
+            // Ubicación → chip que abre el mapa (sin coordenadas crudas)
             if (sighting.lat != null && sighting.lng != null) {
-                Spacer(Modifier.height(6.dp))
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                Spacer(Modifier.height(8.dp))
+                Surface(
+                    onClick = {
+                        val uri = Uri.parse("geo:${sighting.lat},${sighting.lng}?q=${sighting.lat},${sighting.lng}(Avistamiento)")
+                        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                    },
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFFE8F5E9)
                 ) {
-                    Icon(Icons.Default.LocationOn, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(12.dp))
-                    Text(
-                        "%.4f, %.4f".format(sighting.lat, sighting.lng),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF4CAF50)
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(Icons.Default.Map, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(14.dp))
+                        Text(
+                            "Ver ubicación en el mapa",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF2E7D32)
+                        )
+                    }
                 }
             }
 
