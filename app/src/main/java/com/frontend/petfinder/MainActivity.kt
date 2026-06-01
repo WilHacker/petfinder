@@ -6,7 +6,9 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
@@ -47,9 +49,14 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val nc = rememberNavController()
-                    navController = nc
-                    PetFinderNavGraph(navController = nc)
+                    // La franja de la barra de estado queda con el fondo del tema (Surface).
+                    // statusBarsPadding() empuja el contenido debajo de la barra del sistema
+                    // y CONSUME el inset, así los Scaffold/TopAppBar internos no se duplican.
+                    Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+                        val nc = rememberNavController()
+                        navController = nc
+                        PetFinderNavGraph(navController = nc)
+                    }
                 }
             }
         }

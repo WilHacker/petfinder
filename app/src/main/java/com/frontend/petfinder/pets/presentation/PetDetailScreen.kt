@@ -950,6 +950,7 @@ private fun PetDetailContent(
         ?: pet.fotos?.firstOrNull()?.fotoUrl
     val estado = pet.estado
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -998,30 +999,16 @@ private fun PetDetailContent(
                     )
             )
 
-            // Botón volver — top-start
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(16.dp)
-                    .size(40.dp)
-                    .shadow(4.dp, CircleShape)
-                    .clip(CircleShape)
-                    .background(Color.White),
-                contentAlignment = Alignment.Center
-            ) {
-                IconButton(onClick = onBack, modifier = Modifier.fillMaxSize()) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.Black)
-                }
-            }
-
-            // Badge de estado
+            // Badge de estado — top-end (scrollea con el hero)
             Surface(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
+                    .statusBarsPadding()
                     .padding(16.dp)
                     .clickable(enabled = !statusChanging) { onShowStatusSheet() },
                 shape = RoundedCornerShape(50.dp),
-                color = estadoColor(estado).copy(alpha = 0.92f)
+                color = estadoColor(estado).copy(alpha = 0.92f),
+                shadowElevation = 4.dp
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
@@ -1431,6 +1418,25 @@ private fun PetDetailContent(
                     }
                 }
                 Spacer(Modifier.height(32.dp))
+            }
+        }
+        }
+
+        // ── CONTROL FIJO (no scrollea, respeta la barra de estado) ────────
+        // Botón volver — top-start (siempre visible)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .statusBarsPadding()
+                .padding(16.dp)
+                .size(40.dp)
+                .shadow(4.dp, CircleShape)
+                .clip(CircleShape)
+                .background(Color.White),
+            contentAlignment = Alignment.Center
+        ) {
+            IconButton(onClick = onBack, modifier = Modifier.fillMaxSize()) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Volver", tint = Color.Black)
             }
         }
     }

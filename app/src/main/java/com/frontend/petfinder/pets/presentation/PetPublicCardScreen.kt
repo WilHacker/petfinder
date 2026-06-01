@@ -169,7 +169,7 @@ fun PetPublicCardScreen(
                 }
                 IconButton(
                     onClick = onNavigateBack,
-                    modifier = Modifier.padding(top = 40.dp, start = 8.dp).align(Alignment.TopStart)
+                    modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 8.dp, start = 8.dp)
                 ) {
                     Icon(Icons.Default.ArrowBack, contentDescription = "Volver")
                 }
@@ -268,7 +268,8 @@ private fun PublicCardContent(
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
-                        .padding(top = 56.dp),
+                        .statusBarsPadding()
+                        .padding(top = 16.dp),
                     shape = RoundedCornerShape(50),
                     color = Color(0xFFD32F2F)
                 ) {
@@ -286,7 +287,7 @@ private fun PublicCardContent(
             // Botón atrás
             IconButton(
                 onClick = onNavigateBack,
-                modifier = Modifier.align(Alignment.TopStart).padding(top = 40.dp, start = 8.dp)
+                modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(top = 8.dp, start = 8.dp)
             ) {
                 Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.35f)) {
                     Icon(
