@@ -126,7 +126,8 @@ object PetRepository {
 
     suspend fun addOwner(petId: String, correoElectronico: String, tipoRelacion: String): Result<PetOwnerRelationDto> = runCatching {
         val r = ApiServices.pets.addPetOwner(petId, AddOwnerRequest(correoElectronico = correoElectronico, tipoRelacion = tipoRelacion))
-        if (r.isSuccessful) r.body()!! else throw HttpException(r)
+        if (r.isSuccessful) r.body()!!
+        else throw Exception(backendMessage(r, "No se pudo agregar al cuidador"))
     }
 
     suspend fun removeOwner(petId: String, personaId: String): Result<Unit> = runCatching {

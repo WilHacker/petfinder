@@ -219,7 +219,7 @@ class PetDetailViewModel : ViewModel() {
             _ownerLoading.value = true
             PetRepository.addOwner(petId, correoElectronico.trim(), tipoRelacion).fold(
                 onSuccess = { load(petId) },
-                onFailure = { e -> _ownerError.value = "No se pudo agregar: ${e.message?.take(60)}" }
+                onFailure = { e -> _ownerError.value = e.message ?: "No se pudo agregar al cuidador" }
             )
             _ownerLoading.value = false
         }
