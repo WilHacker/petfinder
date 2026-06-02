@@ -1,6 +1,7 @@
 package com.frontend.petfinder.pets.data
 
 import com.frontend.petfinder.core.network.ApiServices
+import com.frontend.petfinder.core.network.PrismaException
 import com.frontend.petfinder.pets.data.dto.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -94,7 +95,13 @@ object PetRepository {
         val r = ApiServices.pets.registerPet(
             nombre, tipoId, sexo, colorPrimario, rasgosParticulares, fotoPrincipalIndex, fotos
         )
-        if (r.isSuccessful) r.body()!! else throw HttpException(r)
+        if (r.isSuccessful) r.body()!!
+        // Surface el mensaje real del backend (p. ej. 409 "Ya tienes una mascota llamada X")
+        // como PrismaException para que el ViewModel lo muestre tal cual al usuario.
+        else throw PrismaException(
+            backendMessage(r, "No se pudo guardar la mascota. Verifica los datos e intenta de nuevo."),
+            code = r.code().toString()
+        )
     }
 
     suspend fun getMedicalRecords(petId: String): Result<List<MedicalRecordDto>> = runCatching {

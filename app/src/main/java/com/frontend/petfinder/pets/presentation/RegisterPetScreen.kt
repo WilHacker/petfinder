@@ -174,7 +174,7 @@ fun RegisterPetScreen(
                 modifier = Modifier.padding(bottom = 8.dp)
             )
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                listOf("M" to "Macho", "H" to "Hembra").forEachIndexed { index, (value, label) ->
+                listOf("M" to "Macho", "F" to "Hembra").forEachIndexed { index, (value, label) ->
                     SegmentedButton(
                         selected = sexo == value,
                         onClick = { viewModel.onSexoChange(value) },
