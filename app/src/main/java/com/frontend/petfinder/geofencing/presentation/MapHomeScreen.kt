@@ -4,14 +4,22 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import coil.imageLoader
+import coil.compose.AsyncImage
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
@@ -25,8 +33,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -106,6 +116,16 @@ fun rememberCustomMarkerIcon(context: Context, url: String?, borderColor: Color)
     }
     return markerIcon
 }
+
+// Datos de una alerta comunitaria cercana, listos para la hoja inferior
+private data class NearbyAlertUi(
+    val mascotaId: String,
+    val nombre: String?,
+    val fotoUrl: String?,
+    val lat: Double,
+    val lng: Double,
+    val distanceM: Float?
+)
 
 @SuppressLint("MissingPermission")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -192,6 +212,59 @@ fun MapHomeScreen(
     val filteredLostPets = remember(lostPets, speciesFilter, selectedTipoNombre) {
         if (speciesFilter == null) lostPets
         else lostPets.filter { it.tipo.equals(selectedTipoNombre, ignoreCase = true) }
+    }
+
+    // Ubicación del usuario para decidir qué alertas comunitarias están "cerca"
+    var userPosition by remember { mutableStateOf<LatLng?>(null) }
+
+    // Alertas comunitarias dentro del radio del usuario → disparan el estado de alerta de pantalla.
+    // community:alert-activated es broadcast a toda la ciudad, así que filtramos por cercanía
+    // para no dejar el banner siempre encendido. Sin ubicación aún, no mostramos banner.
+    val nearbyAlerts = remember(activeAlerts, userPosition) {
+        val u = userPosition ?: return@remember emptyList<MapViewModel.ActiveCommunityAlert>()
+        activeAlerts.values.filter { a ->
+            val res = FloatArray(1)
+            android.location.Location.distanceBetween(u.latitude, u.longitude, a.lat, a.lng, res)
+            res[0] <= 10_000f // 10 km
+        }
+    }
+
+    // Detalles (nombre, foto, distancia) de cada alerta cercana, para la hoja inferior
+    val nearbyAlertDetails = remember(nearbyAlerts, snapshot, lostPets, userPosition) {
+        nearbyAlerts.map { a ->
+            val nombre = snapshot?.misMascotas?.find { it.mascotaId == a.mascotaId }?.nombre
+                ?: snapshot?.desaparecidas?.find { it.mascotaId == a.mascotaId }?.nombre
+                ?: lostPets.find { it.mascotaId == a.mascotaId }?.nombre
+            val foto = a.fotoUrl
+                ?: snapshot?.misMascotas?.find { it.mascotaId == a.mascotaId }?.fotoUrl
+                ?: snapshot?.desaparecidas?.find { it.mascotaId == a.mascotaId }?.fotoUrl
+                ?: lostPets.find { it.mascotaId == a.mascotaId }?.fotoUrl
+            val dist = userPosition?.let { u ->
+                val res = FloatArray(1)
+                android.location.Location.distanceBetween(u.latitude, u.longitude, a.lat, a.lng, res)
+                res[0]
+            }
+            NearbyAlertUi(a.mascotaId, nombre, foto, a.lat, a.lng, dist)
+        }.sortedBy { it.distanceM ?: Float.MAX_VALUE }
+    }
+
+    var showAlertsSheet by remember { mutableStateOf(false) }
+    val alertsSheetState = rememberModalBottomSheetState()
+
+    // Mascota elegida desde la bocina: su pin queda FIJO hasta que el usuario lo cierra.
+    var selectedAlertId by remember { mutableStateOf<String?>(null) }
+    // Rebote breve solo de atención al elegir; luego el pin se queda quieto pero visible.
+    var bounceSelected by remember { mutableStateOf(false) }
+    LaunchedEffect(selectedAlertId) {
+        if (selectedAlertId != null) {
+            bounceSelected = true
+            kotlinx.coroutines.delay(4500)
+            bounceSelected = false
+        }
+    }
+    // Al activar Perdidas se ven todas → la vista individual deja de tener sentido.
+    LaunchedEffect(showLostPets) {
+        if (showLostPets) selectedAlertId = null
     }
 
     var hasLocationPermission by remember { mutableStateOf(false) }
@@ -290,6 +363,16 @@ fun MapHomeScreen(
         }
     }
 
+    // Obtiene la ubicación del usuario (independiente del centrado) para calcular cercanía de alertas
+    LaunchedEffect(hasLocationPermission) {
+        if (!hasLocationPermission) return@LaunchedEffect
+        runCatching {
+            fusedLocationClient.lastLocation.addOnSuccessListener { loc ->
+                if (loc != null) userPosition = LatLng(loc.latitude, loc.longitude)
+            }
+        }
+    }
+
     // Guarda la posición de cámara al abandonar el mapa, para restaurarla al volver
     DisposableEffect(Unit) {
         onDispose { mapViewModel.saveCameraPosition(cameraPositionState.position) }
@@ -340,13 +423,13 @@ fun MapHomeScreen(
             }
         ) {
                 // 0. ALERTAS COMUNITARIAS ACTIVAS — "se pidió ayuda aquí".
-                //    Siempre visibles (no dependen del botón Perdidas ni del filtro de especie).
+                //    El botón Perdidas controla el mapa: estas alertas solo se dibujan con
+                //    Perdidas ON. Excepción: la mascota recién elegida en la bocina se muestra
+                //    temporal aunque Perdidas esté OFF. Cuando se dibuja, tiene prioridad sobre
+                //    las demás capas (que saltan estas mascotas para no duplicar el pin).
                 if (activeAlerts.isNotEmpty()) {
-                    val alertPetsDrawn = filteredMyPets.keys +
-                        if (showLostPets) (filteredCommunitySnapshot.keys + filteredLostPets.map { it.mascotaId }.toSet())
-                        else emptySet()
-
                     activeAlerts.forEach { (mascotaId, alert) ->
+                        if (!showLostPets && mascotaId != selectedAlertId) return@forEach
                         key("alert_$mascotaId") {
                             val center = LatLng(alert.lat, alert.lng)
 
@@ -370,21 +453,45 @@ fun MapHomeScreen(
                                 strokeWidth = 3f
                             )
 
-                            // Pin propio solo si ninguna otra capa ya dibuja a esta mascota
-                            if (mascotaId !in alertPetsDrawn) {
-                                val foto = alert.fotoUrl
-                                    ?: snapshot?.desaparecidas?.find { it.mascotaId == mascotaId }?.fotoUrl
-                                    ?: lostPets.find { it.mascotaId == mascotaId }?.fotoUrl
-                                val alertIcon = rememberCustomMarkerIcon(context, foto, Color(0xFFE53935))
-                                Marker(
-                                    state = MarkerState(position = center),
-                                    title = "🆘 Ayuda solicitada",
-                                    snippet = "La comunidad está buscando a esta mascota",
-                                    icon = alertIcon ?: BitmapDescriptorFactory.defaultMarker(
-                                        BitmapDescriptorFactory.HUE_RED
-                                    )
-                                )
+                            // Foto: alerta en vivo → mis mascotas → desaparecidas → perdidas públicas
+                            val foto = alert.fotoUrl
+                                ?: snapshot?.misMascotas?.find { it.mascotaId == mascotaId }?.fotoUrl
+                                ?: snapshot?.desaparecidas?.find { it.mascotaId == mascotaId }?.fotoUrl
+                                ?: lostPets.find { it.mascotaId == mascotaId }?.fotoUrl
+                            val recompensa = snapshot?.misMascotas?.find { it.mascotaId == mascotaId }?.recompensa
+                                ?: snapshot?.desaparecidas?.find { it.mascotaId == mascotaId }?.recompensa
+                            val alertSnippet = buildString {
+                                append("La comunidad está buscando a esta mascota")
+                                if (recompensa != null && recompensa > 0)
+                                    append(" · Recompensa: Bs. %.0f".format(recompensa))
                             }
+                            val alertIcon = rememberCustomMarkerIcon(context, foto, Color(0xFFE53935))
+
+                            // Por defecto el pin está quieto. Solo rebota la mascota que el
+                            // usuario eligió desde la bocina, durante unos segundos.
+                            val isSelected = mascotaId == selectedAlertId
+                            val bounce = rememberInfiniteTransition(label = "alertBounce_$mascotaId")
+                            val dy by bounce.animateFloat(
+                                initialValue = 0f,
+                                targetValue = 1f,
+                                animationSpec = infiniteRepeatable(
+                                    animation = tween(450, easing = FastOutSlowInEasing),
+                                    repeatMode = RepeatMode.Reverse
+                                ),
+                                label = "alertDy"
+                            )
+                            val markerPos = if (isSelected && bounceSelected)
+                                LatLng(center.latitude + dy * 0.00008, center.longitude)
+                            else center
+
+                            Marker(
+                                state = MarkerState(position = markerPos),
+                                title = "🆘 Ayuda solicitada",
+                                snippet = alertSnippet,
+                                icon = alertIcon ?: BitmapDescriptorFactory.defaultMarker(
+                                    BitmapDescriptorFactory.HUE_RED
+                                )
+                            )
                         }
                     }
                 }
@@ -408,6 +515,10 @@ fun MapHomeScreen(
 
                     // 2. MIS MASCOTAS — siempre visibles (en_casa, en_paseo, extraviada)
                     filteredMyPets.forEach { (mascotaId, petData) ->
+                        // Saltamos solo si el bloque 0 está dibujando su pin de "Ayuda solicitada"
+                        // (con Perdidas ON o si fue la elegida en la bocina). Si no, la dibujamos
+                        // normal para que MIS mascotas nunca desaparezcan del mapa.
+                        if (mascotaId in activeAlerts && (showLostPets || mascotaId == selectedAlertId)) return@forEach
                         key(mascotaId) {
                             val (pos, fotoUrl, _) = petData
                             val isLost = mascotaId in misExtraviadas
@@ -454,6 +565,8 @@ fun MapHomeScreen(
                     // 2b. AJENAS DEL SNAPSHOT — solo cuando Perdidas está activo
                     if (showLostPets) {
                         filteredCommunitySnapshot.forEach { (mascotaId, petData) ->
+                            // Con alerta activa ya se dibuja como "Ayuda solicitada" (bloque 0).
+                            if (mascotaId in activeAlerts) return@forEach
                             key("snap_$mascotaId") {
                                 val (pos, fotoUrl, _) = petData
                                 val customIcon = rememberCustomMarkerIcon(context, fotoUrl, Color(0xFFE53935))
@@ -506,7 +619,8 @@ fun MapHomeScreen(
 
                 // 4. MASCOTAS PERDIDAS PÚBLICAS (endpoint separado) — excluye las mías y las del snapshot
                 if (showLostPets) {
-                    val yaRenderizadas = filteredMyPets.keys + filteredCommunitySnapshot.keys
+                    // activeAlerts.keys: las que ya se dibujan como "Ayuda solicitada" (bloque 0).
+                    val yaRenderizadas = filteredMyPets.keys + filteredCommunitySnapshot.keys + activeAlerts.keys
                     filteredLostPets.filter { it.mascotaId !in yaRenderizadas }.forEach { lost ->
                         key("lost_${lost.mascotaId}") {
                             val pos = LatLng(lost.ubicacion.lat, lost.ubicacion.lng)
@@ -736,6 +850,173 @@ fun MapHomeScreen(
                                         selectedLabelColor = Color.White
                                     )
                                 )
+                            }
+                        }
+                    }
+
+                    // Bocina de alertas comunitarias cercanas — debajo de los filtros (bajo "Todos").
+                    // Acceso a demanda; funciona independientemente del botón Perdidas.
+                    if (nearbyAlerts.isNotEmpty()) {
+                        Surface(
+                            modifier = Modifier
+                                .padding(start = 12.dp, top = 8.dp)
+                                .shadow(6.dp, RoundedCornerShape(50.dp))
+                                .clickable { showAlertsSheet = true },
+                            shape = RoundedCornerShape(50.dp),
+                            color = Color(0xFFE53935)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Campaign,
+                                    contentDescription = "Alertas comunitarias cerca",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color.White
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    if (nearbyAlerts.size == 1) "Alerta comunitaria"
+                                    else "${nearbyAlerts.size} alertas comunitarias",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    // Chip para cerrar la vista individual de una alerta (Perdidas OFF).
+                    if (selectedAlertId != null && !showLostPets) {
+                        Surface(
+                            modifier = Modifier
+                                .padding(start = 12.dp, top = 8.dp)
+                                .shadow(6.dp, RoundedCornerShape(50.dp))
+                                .clickable { selectedAlertId = null },
+                            shape = RoundedCornerShape(50.dp),
+                            color = Color.White
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Cerrar vista",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = Color(0xFFE53935)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    "Cerrar vista",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF333333)
+                                )
+                            }
+                        }
+                    }
+
+                }
+            }
+
+            // Hoja inferior: lista de TODAS las alertas comunitarias cercanas
+            if (showAlertsSheet) {
+                ModalBottomSheet(
+                    onDismissRequest = { showAlertsSheet = false },
+                    sheetState = alertsSheetState
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .padding(bottom = 24.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Campaign, null, tint = Color(0xFFE53935), modifier = Modifier.size(24.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Alertas comunitarias cerca de ti",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            "${nearbyAlertDetails.size} mascotas necesitan ayuda en tu zona",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(12.dp))
+
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(nearbyAlertDetails, key = { it.mascotaId }) { item ->
+                                val distLabel = item.distanceM?.let { d ->
+                                    if (d < 1000f) "${d.toInt()} m" else "%.1f km".format(d / 1000f)
+                                }
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFFFFEBEE)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        if (item.fotoUrl != null) {
+                                            AsyncImage(
+                                                model = item.fotoUrl,
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .clip(CircleShape),
+                                                contentScale = ContentScale.Crop
+                                            )
+                                        } else {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .clip(CircleShape)
+                                                    .background(Color(0xFFE53935)),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Default.Pets, null, tint = Color.White, modifier = Modifier.size(24.dp))
+                                            }
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                item.nombre ?: "Mascota",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                buildString {
+                                                    append("Necesita ayuda")
+                                                    if (distLabel != null) append(" · a $distLabel")
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Button(
+                                            onClick = {
+                                                cameraPositionState.move(
+                                                    CameraUpdateFactory.newLatLngZoom(LatLng(item.lat, item.lng), 16f)
+                                                )
+                                                selectedAlertId = item.mascotaId // solo esta rebota
+                                                showAlertsSheet = false
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                                        ) {
+                                            Icon(Icons.Default.Place, null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text("Ir")
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
