@@ -2,7 +2,6 @@ package com.frontend.petfinder.pets.presentation
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.net.Uri
 import com.frontend.petfinder.core.presentation.components.DialogType
 import com.frontend.petfinder.core.presentation.components.PetFinderDialog
@@ -44,6 +43,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.frontend.petfinder.core.theme.PrimaryOrange
 import com.frontend.petfinder.core.theme.PrimaryOrangeLight
+import com.frontend.petfinder.core.utils.openDialer
+import com.frontend.petfinder.core.utils.openWhatsApp
 import com.frontend.petfinder.pets.data.dto.ContactoPublicoDto
 import com.frontend.petfinder.pets.data.dto.PropietarioPublicoDto
 import com.frontend.petfinder.pets.data.dto.PublicPetCardDto
@@ -182,14 +183,10 @@ fun PetPublicCardScreen(
                     sightingSubmitting = sightingSubmitting,
                     onNavigateBack = onNavigateBack,
                     onContactClick = { contacto ->
-                        val intent = when (contacto.tipo.lowercase()) {
-                            "whatsapp" -> Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://wa.me/${contacto.valor.filter { it.isDigit() }}")
-                            )
-                            else -> Intent(Intent.ACTION_DIAL, Uri.parse("tel:${contacto.valor}"))
+                        when (contacto.tipo.lowercase()) {
+                            "whatsapp" -> openWhatsApp(context, contacto.valor)
+                            else -> openDialer(context, contacto.valor)
                         }
-                        context.startActivity(intent)
                     },
                     onReportSighting = { desc, foto ->
                         scope.launch {

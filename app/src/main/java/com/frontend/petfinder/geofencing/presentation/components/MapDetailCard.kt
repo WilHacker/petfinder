@@ -2,7 +2,6 @@ package com.frontend.petfinder.geofencing.presentation.components
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -29,6 +28,8 @@ import coil.compose.AsyncImage
 import com.frontend.petfinder.core.presentation.components.DialogType
 import com.frontend.petfinder.core.presentation.components.PetFinderDialog
 import com.frontend.petfinder.core.theme.PrimaryOrange
+import com.frontend.petfinder.core.utils.openDialer
+import com.frontend.petfinder.core.utils.openWhatsApp
 import com.frontend.petfinder.geofencing.data.*
 import com.frontend.petfinder.geofencing.presentation.MapViewModel
 
@@ -454,18 +455,6 @@ private fun relacionLabel(r: String) = when (r) {
 
 // Recorta una fecha ISO ("2026-06-01T20:00:00.000Z") a "2026-06-01"
 private fun fechaCorta(iso: String) = iso.take(10)
-
-private fun openWhatsApp(context: Context, numero: String, mensaje: String) {
-    val digits = numero.filter { it.isDigit() }
-    val full = if (digits.length <= 8) "591$digits" else digits // Bolivia +591
-    val uri = Uri.parse("https://wa.me/$full?text=${Uri.encode(mensaje)}")
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri)) }
-}
-
-private fun openDialer(context: Context, numero: String) {
-    val uri = Uri.parse("tel:${numero.filter { it.isDigit() || it == '+' }}")
-    runCatching { context.startActivity(Intent(Intent.ACTION_DIAL, uri)) }
-}
 
 private fun sharePet(context: Context, card: MapPetCardDto) {
     val texto = buildString {
