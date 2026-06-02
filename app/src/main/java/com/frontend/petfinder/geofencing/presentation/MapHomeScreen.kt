@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.frontend.petfinder.core.presentation.components.DialogType
 import com.frontend.petfinder.core.presentation.components.PetFinderDialog
 import com.frontend.petfinder.core.theme.PrimaryOrange
+import com.frontend.petfinder.geofencing.presentation.components.MapDetailCard
 import com.frontend.petfinder.core.utils.MapStyle
 import com.frontend.petfinder.core.utils.PermissionHandler
 import com.google.android.gms.location.LocationServices
@@ -56,36 +57,53 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.maps.android.compose.*
 
+// Iniciales para el avatar de respaldo (sin foto): "Lisandro Huayllani" -> "LH"
+private fun initialsOf(name: String?): String {
+    if (name.isNullOrBlank()) return ""
+    val parts = name.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    return when {
+        parts.isEmpty() -> ""
+        parts.size == 1 -> parts[0].take(2).uppercase()
+        else -> (parts[0].take(1) + parts[1].take(1)).uppercase()
+    }
+}
+
 // --- GENERADOR DE AVATARES CIRCULARES PREMIUM ---
+// fallbackName: cuando no hay foto, dibuja un avatar circular con las INICIALES del nombre.
 @Composable
-fun rememberCustomMarkerIcon(context: Context, url: String?, borderColor: Color): BitmapDescriptor? {
-    var markerIcon by remember(url, borderColor) { mutableStateOf<BitmapDescriptor?>(null) }
+fun rememberCustomMarkerIcon(
+    context: Context,
+    url: String?,
+    borderColor: Color,
+    fallbackName: String? = null
+): BitmapDescriptor? {
+    var markerIcon by remember(url, borderColor, fallbackName) { mutableStateOf<BitmapDescriptor?>(null) }
 
-    LaunchedEffect(url, borderColor) {
-        if (url == null) return@LaunchedEffect
+    LaunchedEffect(url, borderColor, fallbackName) {
         runCatching {
-            val request = coil.request.ImageRequest.Builder(context)
-                .data(url)
-                .size(112, 112)
-                .scale(coil.size.Scale.FILL)
-                .allowHardware(false)
-                .build()
-
-            val result = context.imageLoader.execute(request)
-            if (result !is coil.request.SuccessResult) return@runCatching
-
-            // Safe cast: algunos formatos (WebP animado, SVG) no son BitmapDrawable
-            val raw = (result.drawable as? android.graphics.drawable.BitmapDrawable)
-                ?.bitmap ?: return@runCatching
-
-            // Escala explícita para garantizar 112×112 sin importar el aspect ratio original
-            val photoSize = 112
-            val src = if (raw.width == photoSize && raw.height == photoSize) raw
-                      else android.graphics.Bitmap.createScaledBitmap(raw, photoSize, photoSize, true)
-
             val markerSize = 132
-            val center = markerSize / 2f       // 66f
-            val photoRadius = photoSize / 2f   // 56f
+            val center = markerSize / 2f
+
+            // 1. Intentar cargar la foto (si hay url)
+            val photo: android.graphics.Bitmap? = if (url != null) {
+                val request = coil.request.ImageRequest.Builder(context)
+                    .data(url)
+                    .size(112, 112)
+                    .scale(coil.size.Scale.FILL)
+                    .allowHardware(false)
+                    .build()
+                val result = context.imageLoader.execute(request)
+                val raw = (result as? coil.request.SuccessResult)?.drawable
+                    ?.let { it as? android.graphics.drawable.BitmapDrawable }?.bitmap
+                raw?.let {
+                    if (it.width == 112 && it.height == 112) it
+                    else android.graphics.Bitmap.createScaledBitmap(it, 112, 112, true)
+                }
+            } else null
+
+            // Sin foto y sin nombre para iniciales → deja el pin por defecto
+            val initials = initialsOf(fallbackName)
+            if (photo == null && initials.isEmpty()) return@runCatching
 
             val output = android.graphics.Bitmap.createBitmap(
                 markerSize, markerSize, android.graphics.Bitmap.Config.ARGB_8888
@@ -93,23 +111,41 @@ fun rememberCustomMarkerIcon(context: Context, url: String?, borderColor: Color)
             val canvas = android.graphics.Canvas(output)
             val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG)
 
-            // 1. Borde exterior de color
+            // Borde exterior de color
             paint.color = borderColor.toArgb()
             canvas.drawCircle(center, center, center, paint)
 
-            // 2. Anillo blanco interior
-            paint.color = android.graphics.Color.WHITE
-            canvas.drawCircle(center, center, 60f, paint)
-
-            // 3. Foto recortada en círculo exacto (clipPath evita bordes irregulares)
-            val clipPath = android.graphics.Path().apply {
-                addCircle(center, center, photoRadius, android.graphics.Path.Direction.CW)
+            if (photo != null) {
+                // Anillo blanco + foto recortada en círculo
+                paint.color = android.graphics.Color.WHITE
+                canvas.drawCircle(center, center, 60f, paint)
+                val photoRadius = 56f
+                val clipPath = android.graphics.Path().apply {
+                    addCircle(center, center, photoRadius, android.graphics.Path.Direction.CW)
+                }
+                canvas.save()
+                canvas.clipPath(clipPath)
+                val offset = (markerSize - 112) / 2f
+                canvas.drawBitmap(photo, offset, offset, paint)
+                canvas.restore()
+            } else {
+                // Avatar de iniciales: relleno de color + texto blanco centrado
+                paint.color = android.graphics.Color.WHITE
+                canvas.drawCircle(center, center, 60f, paint)
+                paint.color = borderColor.toArgb()
+                canvas.drawCircle(center, center, 56f, paint)
+                val textPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    color = android.graphics.Color.WHITE
+                    textSize = 50f
+                    textAlign = android.graphics.Paint.Align.CENTER
+                    typeface = android.graphics.Typeface.create(
+                        android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD
+                    )
+                }
+                val fm = textPaint.fontMetrics
+                val baseline = center - (fm.ascent + fm.descent) / 2f
+                canvas.drawText(initials, center, baseline, textPaint)
             }
-            canvas.save()
-            canvas.clipPath(clipPath)
-            val offset = (markerSize - photoSize) / 2f  // 10f
-            canvas.drawBitmap(src, offset, offset, paint)
-            canvas.restore()
 
             markerIcon = BitmapDescriptorFactory.fromBitmap(output)
         }
@@ -134,6 +170,7 @@ fun MapHomeScreen(
     mapViewModel: MapViewModel,
     onNavigateToProfile: () -> Unit = {},
     onNavigateToChat: () -> Unit = {},
+    onNavigateToPetDetail: (String) -> Unit = {},
     unreadChat: Int = 0,
     isAdmin: Boolean = false
 ) {
@@ -158,6 +195,7 @@ fun MapHomeScreen(
     val speciesFilter by mapViewModel.speciesFilter.collectAsStateWithLifecycle()
     val focusMascotaId by mapViewModel.focusMascotaId.collectAsStateWithLifecycle()
     val activeAlerts by mapViewModel.activeAlerts.collectAsStateWithLifecycle()
+    val mapCard by mapViewModel.mapCard.collectAsStateWithLifecycle()
 
     // IDs de mis propias mascotas extraviadas (borde rojo en el marcador)
     val misExtraviadas = remember(snapshot) {
@@ -465,7 +503,10 @@ fun MapHomeScreen(
                                 if (recompensa != null && recompensa > 0)
                                     append(" · Recompensa: Bs. %.0f".format(recompensa))
                             }
-                            val alertIcon = rememberCustomMarkerIcon(context, foto, Color(0xFFE53935))
+                            val alertNombre = snapshot?.misMascotas?.find { it.mascotaId == mascotaId }?.nombre
+                                ?: snapshot?.desaparecidas?.find { it.mascotaId == mascotaId }?.nombre
+                                ?: lostPets.find { it.mascotaId == mascotaId }?.nombre
+                            val alertIcon = rememberCustomMarkerIcon(context, foto, Color(0xFFE53935), fallbackName = alertNombre)
 
                             // Por defecto el pin está quieto. Solo rebota la mascota que el
                             // usuario eligió desde la bocina, durante unos segundos.
@@ -488,6 +529,7 @@ fun MapHomeScreen(
                                 state = MarkerState(position = markerPos),
                                 title = "🆘 Ayuda solicitada",
                                 snippet = alertSnippet,
+                                onClick = { mapViewModel.onPetPinTapped(mascotaId); true },
                                 icon = alertIcon ?: BitmapDescriptorFactory.defaultMarker(
                                     BitmapDescriptorFactory.HUE_RED
                                 )
@@ -503,11 +545,15 @@ fun MapHomeScreen(
                         key(user.personaId) {
                             val livePos = liveOwnerLocations[user.personaId]
                             val finalPos = livePos ?: LatLng(user.ubicacion.lat, user.ubicacion.lng)
-                            val customIcon = rememberCustomMarkerIcon(context, user.fotoUrl, Color(0xFF4CAF50))
+                            val customIcon = rememberCustomMarkerIcon(
+                                context, user.fotoUrl, Color(0xFF4CAF50),
+                                fallbackName = listOfNotNull(user.nombre, user.apellidoPaterno).joinToString(" ")
+                            )
 
                             Marker(
                                 state = MarkerState(position = finalPos),
                                 title = user.nombre,
+                                onClick = { mapViewModel.onCollaboratorPinTapped(user.personaId); true },
                                 icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN)
                             )
                         }
@@ -528,7 +574,10 @@ fun MapHomeScreen(
                                 isLost        -> Color(0xFFE53935)
                                 else          -> PrimaryOrange
                             }
-                            val customIcon = rememberCustomMarkerIcon(context, fotoUrl, borderColor)
+                            val customIcon = rememberCustomMarkerIcon(
+                                context, fotoUrl, borderColor,
+                                fallbackName = data.misMascotas.find { it.mascotaId == mascotaId }?.nombre
+                            )
                             val recompensa = snapshot?.misMascotas
                                 ?.find { it.mascotaId == mascotaId }?.recompensa
                             val snippetText = if (isLost) buildString {
@@ -554,6 +603,7 @@ fun MapHomeScreen(
                                         else if (isLost) "Extraviada"
                                         else "Mi mascota",
                                 snippet = snippetText,
+                                onClick = { mapViewModel.onPetPinTapped(mascotaId); true },
                                 icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(
                                     if (isLost) BitmapDescriptorFactory.HUE_RED
                                     else BitmapDescriptorFactory.HUE_ORANGE
@@ -569,7 +619,10 @@ fun MapHomeScreen(
                             if (mascotaId in activeAlerts) return@forEach
                             key("snap_$mascotaId") {
                                 val (pos, fotoUrl, _) = petData
-                                val customIcon = rememberCustomMarkerIcon(context, fotoUrl, Color(0xFFE53935))
+                                val customIcon = rememberCustomMarkerIcon(
+                                    context, fotoUrl, Color(0xFFE53935),
+                                    fallbackName = snapshot?.desaparecidas?.find { it.mascotaId == mascotaId }?.nombre
+                                )
                                 val recompensa = snapshot?.desaparecidas
                                     ?.find { it.mascotaId == mascotaId }?.recompensa
                                 val snippetText = buildString {
@@ -581,6 +634,7 @@ fun MapHomeScreen(
                                     state = MarkerState(position = pos),
                                     title = "Extraviada",
                                     snippet = snippetText,
+                                    onClick = { mapViewModel.onPetPinTapped(mascotaId); true },
                                     icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(
                                         BitmapDescriptorFactory.HUE_RED
                                     )
@@ -624,13 +678,14 @@ fun MapHomeScreen(
                     filteredLostPets.filter { it.mascotaId !in yaRenderizadas }.forEach { lost ->
                         key("lost_${lost.mascotaId}") {
                             val pos = LatLng(lost.ubicacion.lat, lost.ubicacion.lng)
-                            val customIcon = rememberCustomMarkerIcon(context, lost.fotoUrl, Color(0xFFE53935))
+                            val customIcon = rememberCustomMarkerIcon(context, lost.fotoUrl, Color(0xFFE53935), fallbackName = lost.nombre)
                             val snippetParts = mutableListOf("Extraviada · ${lost.tipo}")
                             lost.recompensa?.let { if (it > 0) snippetParts.add("Recompensa: Bs. %.0f".format(it)) }
                             Marker(
                                 state = MarkerState(position = pos),
                                 title = lost.nombre,
                                 snippet = snippetParts.joinToString(" · "),
+                                onClick = { mapViewModel.onPetPinTapped(lost.mascotaId); true },
                                 icon = customIcon ?: BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED)
                             )
                         }
@@ -1022,6 +1077,22 @@ fun MapHomeScreen(
                     }
                 }
             }
+
+            // Card de detalle (estilo Google Maps) al tocar un pin
+            MapDetailCard(
+                state = mapCard,
+                onDismiss = { mapViewModel.dismissCard() },
+                onViewPetDetail = { mascotaId ->
+                    mapViewModel.dismissCard()
+                    onNavigateToPetDetail(mascotaId)
+                },
+                onLocate = { lat, lng ->
+                    mapViewModel.dismissCard()
+                    cameraPositionState.move(
+                        CameraUpdateFactory.newLatLngZoom(LatLng(lat, lng), 16f)
+                    )
+                }
+            )
 
             // FABs de dibujo — esquina inferior derecha (solo cuando no está en modo dibujo ni tracking)
             if (!isDrawingMode && !isTracking) {

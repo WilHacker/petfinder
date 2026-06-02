@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.frontend.petfinder.core.network.SocketManager
+import com.frontend.petfinder.core.network.toPrismaMessage
 import com.frontend.petfinder.core.service.LocationTrackingService
 import com.frontend.petfinder.core.service.TrackingManager
 import com.frontend.petfinder.core.utils.PermissionHandler
@@ -234,6 +235,8 @@ class MapViewModel : ViewModel() {
                         }
                     )
                 }
+                // Card abierta: actualiza el badge de estado en vivo
+                patchOpenPetCard(update.mascotaId) { it.copy(estado = update.estado) }
                 GeofencingRepository.getMapSnapshot(_speciesFilter.value).fold(
                     onSuccess = { _snapshot.value = it },
                     onFailure = { e -> Log.w(TAG, "petStatusFlow refresh: ${e.message}") }
@@ -244,6 +247,10 @@ class MapViewModel : ViewModel() {
         viewModelScope.launch {
             SocketManager.ownerLocationFlow.collect { update ->
                 _liveOwnerLocations.update { it + (update.personaId to LatLng(update.lat, update.lng)) }
+                // Card de colaborador abierta: actualiza su ubicación en vivo
+                patchOpenCollaboratorCard(update.personaId) {
+                    it.copy(ubicacion = PointDto(update.lat, update.lng))
+                }
             }
         }
 
@@ -258,6 +265,16 @@ class MapViewModel : ViewModel() {
                                 fotoUrl = update.fotoUrl ?: pet.fotoUrl
                             ) else pet
                         }
+                    )
+                }
+                // Card abierta: actualiza nombre/estado/foto en vivo
+                patchOpenPetCard(update.mascotaId) { c ->
+                    c.copy(
+                        nombre = update.nombre ?: c.nombre,
+                        estado = update.estado ?: c.estado,
+                        fotos = if (update.fotoUrl != null)
+                            listOf(MapCardFotoDto(fotoUrl = update.fotoUrl, esPrincipal = true))
+                        else c.fotos
                     )
                 }
             }
@@ -534,5 +551,67 @@ class MapViewModel : ViewModel() {
 
     fun clearFocus() {
         _focusMascotaId.value = null
+    }
+
+    // ── CARD DE DETALLE DEL MAPA (al tocar un pin) ──────────────────────────────
+    sealed class MapCardState {
+        object None : MapCardState()
+        object Loading : MapCardState()
+        data class Pet(val card: MapPetCardDto) : MapCardState()
+        data class Collaborator(val card: MapCollaboratorCardDto) : MapCardState()
+        data class Error(val message: String) : MapCardState()
+    }
+
+    private val _mapCard = MutableStateFlow<MapCardState>(MapCardState.None)
+    val mapCard: StateFlow<MapCardState> = _mapCard.asStateFlow()
+
+    fun onPetPinTapped(mascotaId: String) {
+        viewModelScope.launch {
+            _mapCard.value = MapCardState.Loading
+            GeofencingRepository.getMapPetCard(mascotaId).fold(
+                onSuccess = { _mapCard.value = MapCardState.Pet(it) },
+                onFailure = { e ->
+                    _mapCard.value = MapCardState.Error(
+                        e.toPrismaMessage() ?: "No se pudo cargar la información de la mascota."
+                    )
+                }
+            )
+        }
+    }
+
+    fun onCollaboratorPinTapped(personaId: String) {
+        viewModelScope.launch {
+            _mapCard.value = MapCardState.Loading
+            GeofencingRepository.getMapCollaboratorCard(personaId).fold(
+                onSuccess = { _mapCard.value = MapCardState.Collaborator(it) },
+                onFailure = { e ->
+                    _mapCard.value = MapCardState.Error(
+                        e.toPrismaMessage() ?: "No se pudo cargar la información del colaborador."
+                    )
+                }
+            )
+        }
+    }
+
+    fun dismissCard() {
+        _mapCard.value = MapCardState.None
+    }
+
+    // Parchea la card de mascota abierta si coincide el id (para updates en vivo por WS).
+    private fun patchOpenPetCard(mascotaId: String, transform: (MapPetCardDto) -> MapPetCardDto) {
+        val current = _mapCard.value
+        if (current is MapCardState.Pet && current.card.mascotaId == mascotaId) {
+            _mapCard.value = MapCardState.Pet(transform(current.card))
+        }
+    }
+
+    private fun patchOpenCollaboratorCard(
+        personaId: String,
+        transform: (MapCollaboratorCardDto) -> MapCollaboratorCardDto
+    ) {
+        val current = _mapCard.value
+        if (current is MapCardState.Collaborator && current.card.personaId == personaId) {
+            _mapCard.value = MapCardState.Collaborator(transform(current.card))
+        }
     }
 }

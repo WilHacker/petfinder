@@ -117,6 +117,9 @@ fun MainScreen(rootNavController: NavHostController) {
                                 restoreState = true
                             }
                         },
+                        onNavigateToPetDetail = { mascotaId ->
+                            rootNavController.navigate(NavRoutes.PetDetail.createRoute(mascotaId))
+                        },
                         unreadChat = unreadTotal,
                         isAdmin = isAdmin
                     )

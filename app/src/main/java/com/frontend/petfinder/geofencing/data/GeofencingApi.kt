@@ -175,6 +175,18 @@ interface GeofencingApi {
         @Query("tipoId") tipoId: Int? = null
     ): Response<List<LostPetMarkerDto>>
 
+    // Card de detalle al tocar un pin de mascota (propia, compartida o de la comunidad)
+    @GET("map/pets/{mascotaId}")
+    suspend fun getMapPetCard(
+        @Path("mascotaId") mascotaId: String
+    ): Response<MapPetCardDto>
+
+    // Card de detalle al tocar el pin de un colaborador
+    @GET("map/collaborators/{personaId}")
+    suspend fun getMapCollaboratorCard(
+        @Path("personaId") personaId: String
+    ): Response<MapCollaboratorCardDto>
+
     // -------------------------------------------------------------------------
     // 2. GESTIÓN DE GEOVALLAS (Zonas Seguras)
     // -------------------------------------------------------------------------
