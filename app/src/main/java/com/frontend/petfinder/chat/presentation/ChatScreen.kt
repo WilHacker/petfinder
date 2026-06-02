@@ -115,7 +115,7 @@ private fun ChatRow(chat: ChatSummaryDto, onClick: () -> Unit) {
                     fontSize = 15.sp
                 )
                 chat.ultimaActividad?.let {
-                    Text(formatDateShort(it), color = TextGray, fontSize = 11.sp)
+                    Text(formatChatDateShort(it), color = TextGray, fontSize = 11.sp)
                 }
             }
 
@@ -246,12 +246,3 @@ private fun EmptyState(message: String, subtitle: String) {
     }
 }
 
-private fun formatDateShort(isoDateTime: String): String {
-    return try {
-        val datePart = isoDateTime.substringBefore("T")
-        val parts = datePart.split("-")
-        "${parts[2]}/${parts[1]}"
-    } catch (_: Exception) {
-        ""
-    }
-}

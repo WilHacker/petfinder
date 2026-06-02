@@ -493,7 +493,7 @@ private fun MessageBubble(message: ChatMessageDto, isMe: Boolean) {
                     Text(text = texto, color = textColor, fontSize = 14.sp, lineHeight = 19.sp)
                 }
 
-                val time = remember(message.creadoEl) { formatTime(message.creadoEl) }
+                val time = remember(message.creadoEl) { formatMessageTime(message.creadoEl) }
                 Row(
                     modifier = Modifier
                         .align(Alignment.End)
@@ -541,11 +541,4 @@ private fun EmptyConversation(estado: String?) {
             modifier = Modifier.padding(horizontal = 40.dp)
         )
     }
-}
-
-private fun formatTime(isoDateTime: String): String {
-    return try {
-        val timePart = isoDateTime.substringAfter("T").substringBefore(".")
-        timePart.substring(0, 5)
-    } catch (_: Exception) { "" }
 }
