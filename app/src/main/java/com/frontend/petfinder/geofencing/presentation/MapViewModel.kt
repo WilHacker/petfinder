@@ -204,6 +204,18 @@ class MapViewModel : ViewModel() {
     }
 
     private fun escucharEventosEnTiempoReal() {
+        // Resync al (re)conectar: el cliente no soporta Connection State Recovery, así que
+        // cada reconexión es sesión nueva y los eventos perdidos no se reenvían. Recargamos
+        // el mapa por REST. Saltamos la PRIMERA conexión (el init ya hizo la carga inicial).
+        viewModelScope.launch {
+            var primeraConexion = true
+            SocketManager.connectionFlow.collect {
+                if (primeraConexion) { primeraConexion = false; return@collect }
+                Log.d(TAG, "Reconexión detectada → re-sincronizando mapa")
+                cargarDatosDelMapa()
+            }
+        }
+
         viewModelScope.launch {
             SocketManager.petLocationFlow.collect { update ->
                 _livePetLocations.update { it + (update.mascotaId to LatLng(update.lat, update.lng)) }

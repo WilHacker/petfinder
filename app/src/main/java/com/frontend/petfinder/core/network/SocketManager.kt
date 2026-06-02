@@ -16,6 +16,18 @@ object SocketManager {
     @Volatile private var socket: Socket? = null
     private val gson = Gson()
 
+    // El cliente Java fija el token (auth) al construir el socket; la reconexión interna
+    // reusa ese token. Guardamos con qué token se construyó y el contexto para poder
+    // recrear el socket con un token fresco si el JWT rota (ver EVENT_CONNECT_ERROR).
+    @Volatile private var connectedWithToken: String? = null
+    @Volatile private var appContext: Context? = null
+
+    // Emite en cada (re)conexión establecida (EVENT_CONNECT). El cliente Java NO soporta
+    // Connection State Recovery, así que cada reconexión es una sesión NUEVA: los eventos
+    // perdidos no se reenvían. Quien escuche este flow debe re-sincronizar su estado por REST.
+    private val _connectionFlow = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val connectionFlow = _connectionFlow.asSharedFlow()
+
     // Canales reactivos para que el MapViewModel escuche los movimientos en vivo
     private val _petLocationFlow = MutableSharedFlow<PetLocationUpdate>(extraBufferCapacity = 1)
     val petLocationFlow = _petLocationFlow.asSharedFlow()
@@ -68,25 +80,50 @@ object SocketManager {
 
     fun connect(jwtToken: String, context: Context) {
         disconnectClean()
+        connectedWithToken = jwtToken
+        appContext = context.applicationContext
 
         try {
             val options = IO.Options.builder()
                 .setTransports(arrayOf(io.socket.engineio.client.transports.WebSocket.NAME))
                 .setAuth(mapOf("token" to "Bearer $jwtToken"))
+                // Reconexión automática robusta (el cliente Java reintenta solo ante caídas).
+                .setReconnection(true)
+                .setReconnectionAttempts(Integer.MAX_VALUE)
+                .setReconnectionDelay(500)
+                .setReconnectionDelayMax(5000)
                 .build()
 
             socket = IO.socket(AppConfig.WS_URL, options)
 
             socket?.on(Socket.EVENT_CONNECT) {
                 Log.d("SocketManager", "Conectado al ecosistema en tiempo real")
+                // Cada (re)conexión = sesión nueva. Avisa para re-sincronizar estado por REST.
+                _connectionFlow.tryEmit(Unit)
+            }
+
+            // Evento de bienvenida del backend: confirma autenticación + rooms unidos.
+            socket?.on("connected") { args ->
+                runCatching { (args[0] as JSONObject).getString("usuarioId") }
+                    .onSuccess { Log.d("SocketManager", "[WS] connected — usuario en línea: $it") }
             }
 
             socket?.on(Socket.EVENT_CONNECT_ERROR) { args ->
-                Log.e("SocketManager", "Error de conexión: ${args.firstOrNull()}")
+                Log.e("SocketManager", "Error de conexión: ${args.joinToString { it?.toString() ?: "null" }}")
+                // Si el JWT rotó (el TokenAuthenticator HTTP ya refrescó cachedAccessToken),
+                // el socket sigue reintentando con el token viejo → el backend lo rechaza en
+                // bucle. Recreamos el socket con el token fresco SOLO si cambió, para no
+                // romper el backoff de socket.io ante errores de red normales (mismo token).
+                val fresh = com.frontend.petfinder.PetFinderApp.sessionManager.cachedAccessToken
+                val ctx = appContext
+                if (fresh != null && ctx != null && fresh != connectedWithToken) {
+                    Log.w("SocketManager", "Token rotó → reconectando con token fresco")
+                    connect(fresh, ctx)
+                }
             }
 
             socket?.on(Socket.EVENT_DISCONNECT) { args ->
-                Log.w("SocketManager", "Socket desconectado: ${args.firstOrNull()}")
+                Log.w("SocketManager", "Socket desconectado — motivo: ${args.joinToString { it?.toString() ?: "null" }}")
             }
 
             socket?.on("pet:location-updated") { args ->
@@ -221,9 +258,21 @@ object SocketManager {
         disconnectClean()
     }
 
+    /**
+     * Garantiza que el socket esté conectado. Si ya está conectado, no hace nada;
+     * si está caído o nulo, (re)conecta con el token provisto (el más reciente).
+     * Pensado para llamarse al volver la app a primer plano.
+     */
+    fun ensureConnected(jwtToken: String, context: Context) {
+        val s = socket
+        if (s != null && s.connected()) return
+        connect(jwtToken, context)
+    }
+
     private fun disconnectClean() {
         socket?.let { s ->
             s.off(Socket.EVENT_CONNECT)
+            s.off("connected")
             s.off(Socket.EVENT_CONNECT_ERROR)
             s.off(Socket.EVENT_DISCONNECT)
             s.off("pet:location-updated")

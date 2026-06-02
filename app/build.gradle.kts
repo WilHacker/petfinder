@@ -80,6 +80,8 @@ dependencies {
 
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.4")
+    // Observa el ciclo de vida de TODA la app (foreground/background) para reconectar el socket
+    implementation("androidx.lifecycle:lifecycle-process:2.8.4")
     // Navegación en Jetpack Compose
     implementation("androidx.navigation:navigation-compose:2.7.7")
     // Librería oficial de íconos de Material Design para Compose
